@@ -1,10 +1,9 @@
 /**
- * Analysis: the overview (collected this year, through time, open pledges against the 200 MNOK
- * milestone) and pledges (tilsagn), decided gifts that haven't arrived. Pledges are a separate
- * layer on top of the measured totals, never part of them.
+ * Analysis: the overview (collected this year, through time, open pledges) and pledges
+ * (tilsagn), decided gifts that haven't arrived. Pledges are a separate layer on top of the
+ * measured totals, never part of them.
  */
 import { moneyInputError, parseMoneyInput } from "@/features/donations/form";
-import { moneyToNumber } from "@/lib/money";
 import type { RouterInputs, RouterOutputs } from "@/lib/trpc";
 
 export type Overview = RouterOutputs["analysis"]["overview"];
@@ -13,31 +12,6 @@ export type PledgeCreateInput = RouterInputs["analysis"]["pledges"]["create"];
 export type PledgeReceivedInput = RouterInputs["analysis"]["pledges"]["markReceived"];
 
 //region Overview
-
-/** Percent of `whole`, 0–100. */
-const percentOf = (part: string, whole: string) => {
-  const w = moneyToNumber(whole);
-  return w > 0 ? Math.min(Math.max((100 * moneyToNumber(part)) / w, 0), 100) : 0;
-};
-
-/**
- * Widths of the progress line to the milestone: measured (solid) from the left, open pledges
- * (hatched) after it, together never past 100 %.
- */
-export function progress(overview: Overview) {
-  const measured = percentOf(overview.throughTime.measured, overview.withPledges.milestone);
-  const pledges = Math.min(
-    percentOf(overview.pledges.open, overview.withPledges.milestone),
-    100 - measured,
-  );
-  return { measured, pledges };
-}
-
-/** "200 MNOK" for 200 000 000. */
-export function milestoneLabel(milestone: string) {
-  const millions = moneyToNumber(milestone) / 1_000_000;
-  return `${Number.isInteger(millions) ? millions : millions.toFixed(1).replace(".", ",")} MNOK`;
-}
 
 /** Ease-out: fast at first, settling on the value. */
 const easeOut = (t: number) => 1 - Math.pow(1 - t, 3);

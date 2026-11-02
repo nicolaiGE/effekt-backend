@@ -8,13 +8,7 @@ import { SkeletonText } from "@/components/ui/skeleton";
 import { CountUpMoney } from "@/features/analysis/count-up";
 import { NEW_DONOR_MONTHS } from "@/features/analysis/donor-cohorts";
 import { CohortsSection, NewDonorsSection } from "@/features/analysis/donor-sections";
-import {
-  milestoneLabel,
-  OVERVIEW_REFRESH_MS,
-  progress,
-  type Overview,
-} from "@/features/analysis/model";
-import { formatMoney } from "@/lib/format";
+import { OVERVIEW_REFRESH_MS, type Overview } from "@/features/analysis/model";
 import { loadPage } from "@/lib/route-data";
 import { useTRPC } from "@/lib/trpc";
 
@@ -26,10 +20,6 @@ export const Route = createFileRoute("/_app/analysis/")({
     ]),
   component: AnalysisOverviewPage,
 });
-
-/** The hatch for pledges: decided, not received. Same in the bar and its legend. */
-const hatch =
-  "bg-[repeating-linear-gradient(135deg,var(--color-chart-1)_0_2px,transparent_2px_6px)]";
 
 function AnalysisOverviewPage() {
   const trpc = useTRPC();
@@ -116,7 +106,8 @@ function ThroughTime({ overview }: { overview: Overview | undefined }) {
       {/* A headline figure: whole kroner, like the stats above. */}
       <MoneyPrecisionProvider precision="whole">
         <div className="grid gap-4">
-          <p className="text-3xl font-semibold tracking-tight">
+          {/* The page's one big figure: a ticker, no progress bar under it */}
+          <p className="text-display font-semibold tracking-tight">
             {overview ? (
               <CountUpMoney value={overview.withPledges.sum} />
             ) : (
@@ -148,69 +139,8 @@ function ThroughTime({ overview }: { overview: Overview | undefined }) {
               <SkeletonText>000 000 000 kr measured + 00 000 000 kr in 0 open pledges</SkeletonText>
             )}
           </p>
-          <Milestone overview={overview} />
         </div>
       </MoneyPrecisionProvider>
     </PageSection>
-  );
-}
-
-/** Progress line to the milestone: measured solid, open pledges hatched after it. */
-const whole = { precision: "whole" } as const;
-
-function Milestone({ overview }: { overview: Overview | undefined }) {
-  const widths = overview ? progress(overview) : { measured: 0, pledges: 0 };
-  const label = overview ? milestoneLabel(overview.withPledges.milestone) : "200 MNOK";
-  const description = overview
-    ? `Progress to ${label}: ${formatMoney(
-        overview.throughTime.measured,
-        whole,
-      )} measured and ${formatMoney(overview.pledges.open, whole)} in open pledges, ${
-        overview.withPledges.passed
-          ? "together past the milestone"
-          : `${formatMoney(overview.withPledges.remaining, whole)} to go`
-      }.`
-    : `Progress to ${label}`;
-  return (
-    <div className="grid gap-2">
-      <div
-        role="img"
-        aria-label={description}
-        className="relative h-3 overflow-hidden rounded-xs bg-muted ring-1 ring-border ring-inset"
-      >
-        <div
-          className="absolute inset-y-0 left-0 bg-chart-1 transition-[width] duration-700 ease-out motion-reduce:transition-none"
-          style={{ width: `${widths.measured}%` }}
-        />
-        <div
-          className={`absolute inset-y-0 transition-[left,width] duration-700 ease-out motion-reduce:transition-none ${hatch}`}
-          style={{ left: `${widths.measured}%`, width: `${widths.pledges}%` }}
-        />
-      </div>
-      <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-1 text-xs text-muted-foreground">
-        <span className="flex flex-wrap items-center gap-x-4 gap-y-1">
-          <span className="inline-flex items-center gap-1.5">
-            <span className="size-2.5 rounded-xs bg-chart-1" aria-hidden />
-            Measured
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <span
-              className={`size-2.5 rounded-xs ring-1 ring-chart-1 ring-inset ${hatch}`}
-              aria-hidden
-            />
-            Open pledges
-          </span>
-        </span>
-        <span className="num">
-          {!overview ? (
-            <SkeletonText>00 000 000 kr to 200 MNOK, with pledges</SkeletonText>
-          ) : overview.withPledges.passed ? (
-            `${label} passed, with pledges`
-          ) : (
-            `${formatMoney(overview.withPledges.remaining, whole)} to ${label}, with pledges`
-          )}
-        </span>
-      </div>
-    </div>
   );
 }

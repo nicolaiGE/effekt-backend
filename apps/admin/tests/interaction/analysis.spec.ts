@@ -40,9 +40,10 @@ test("the through-time figure counts up once without moving anything", async ({ 
   );
   expect(seen.length).toBeGreaterThan(3);
   expect(seen.at(-1)!.text).toBe("170 245 588 kr");
-  // The box is as wide as the total from the first value on (within subpixel rendering)
+  // The box is as wide as the total from the first value on, within subpixel rendering: up to
+  // 2px at the display size (text-display), where the brand font's digits differ slightly
   const final = seen.at(-1)!.width;
-  for (const { width } of seen) expect(Math.abs(width - final)).toBeLessThanOrEqual(1);
+  for (const { width } of seen) expect(Math.abs(width - final)).toBeLessThanOrEqual(2);
   // Screen readers get the total only
   await expect(page.getByText("170 245 588 kr", { exact: true }).last()).toHaveClass(/sr-only/);
 });
