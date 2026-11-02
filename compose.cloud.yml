@@ -1,0 +1,31 @@
+# Override for Claude cloud sessions (docs/claude-cloud.md), on top of compose.dev.yml:
+#   docker compose -f compose.dev.yml -f compose.cloud.yml up -d --wait   (pnpm cloud:env:up)
+#
+# In the Anthropic-hosted VM, containers can pull images but can't install npm packages (the
+# sandbox's proxy only applies to the VM itself). So only MySQL and the mock login run from their
+# images; migrate and api run from the plain Node image with the VM's own install mounted, as in
+# CI (compose.e2e-ci.yml; Linux x64 host only), and the admin runs on the VM (`pnpm admin:dev`,
+# started by scripts/cloud/session-start.sh) instead of installing itself into a container.
+
+x-from-host: &from-host
+  image: node:24.22.1
+  pull_policy: missing
+  working_dir: /app/apps/api
+  # Read-only: nothing in these containers may change the VM's install. `pnpm exec` is a stand-in
+  # (real pnpm would reinstall the workspace into the mount).
+  volumes:
+    - .:/app:ro
+    - ./scripts/e2e/pnpm-exec.sh:/usr/local/bin/pnpm:ro
+
+services:
+  migrate:
+    <<: *from-host
+    build: !reset null
+
+  api:
+    <<: *from-host
+    build: !reset null
+
+  # Runs on the VM instead; `--profile container-admin` brings the container back.
+  admin:
+    profiles: ["container-admin"]

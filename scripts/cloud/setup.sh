@@ -10,7 +10,9 @@
 #   - Node 24 + pnpm (the image only has Node 20-22)
 #   - the Docker images the dev stack uses
 #   - every npm package in pnpm-lock.yaml (pnpm fetch, from a throwaway clone of main)
-#   - the API dev image (effekt-backend-dev:local), so `pnpm dev:env:up` only starts containers
+# Containers here can pull images but can't install npm packages, so cloud sessions run the API
+# and the admin from the VM's own install (compose.cloud.yml) and no image is built.
+# A failed pull only warns: the session can still work, and the hook reports what's missing.
 # Per-session work (PATH, dockerd, pnpm install, starting the stack) is scripts/cloud/session-start.sh.
 set -euo pipefail
 
@@ -40,12 +42,15 @@ fi
 docker info >/dev/null 2>&1 || { echo "dockerd did not start; see /var/log/dockerd.log" >&2; exit 1; }
 t "docker $(docker version --format '{{.Server.Version}}')"
 
-# --- In parallel: images, npm packages, API dev image ------------------------------------------
+# --- In parallel: images and npm packages -----------------------------------------------------
 pull_images() {
   for image in mysql:8.4.11 ghcr.io/navikt/mock-oauth2-server:6.0.4 node:24.22.1 nginx:1.29.3-alpine; do
-    docker pull -q "$image" >/dev/null
+    if docker pull -q "$image" >/dev/null 2>/tmp/pull.err; then
+      t "pulled $image"
+    else
+      echo "WARNING: could not pull $image (is its registry's blob host allowed?): $(tail -c 300 /tmp/pull.err)" >&2
+    fi
   done
-  t "images pulled"
 }
 
 warm_repo() {
@@ -61,12 +66,7 @@ pull_pid=$!
 warm_repo &
 warm_pid=$!
 wait "$warm_pid"
-# The dev image only needs node:24.22.1 and the package files; build it once the clone exists.
-(cd "$WARM" && docker compose -f compose.dev.yml build -q migrate) &
-build_pid=$!
 wait "$pull_pid"
-wait "$build_pid"
-t "API dev image built"
 
 rm -rf "$WARM" # the pnpm store and the Docker images stay
 t "done"

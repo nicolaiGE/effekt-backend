@@ -5,8 +5,10 @@
 #   1. Node 24 on PATH for Claude's shells
 #   2. dockerd running
 #   3. pnpm install (offline-fast from the warm store)
-#   4. the dev stack (MySQL with fake data, mock login, API :5050, admin :3001) starting in the
-#      background; progress in /tmp/dev-env.log, done when /tmp/dev-env.ready exists
+#   4. the dev stack starting in the background: MySQL with fake data and the mock login in
+#      Docker, the API from the VM's install (compose.cloud.yml, `pnpm cloud:env:up`), then the
+#      admin on the VM (`pnpm cloud:admin:dev`). Progress in /tmp/dev-env.log and
+#      /tmp/admin-dev.log; done when /tmp/dev-env.ready exists
 # See docs/claude-cloud.md.
 set -uo pipefail
 
@@ -31,7 +33,13 @@ pnpm install --frozen-lockfile --prefer-offline --reporter=silent ||
 
 rm -f /tmp/dev-env.ready
 if docker info >/dev/null 2>&1; then
-  nohup bash -c 'pnpm dev:env:up >/tmp/dev-env.log 2>&1 && touch /tmp/dev-env.ready' >/dev/null 2>&1 &
+  # shellcheck disable=SC2016 # the inner script expands its own variables
+  nohup bash -c '
+    pnpm cloud:env:up >/tmp/dev-env.log 2>&1 || exit 1
+    nohup pnpm cloud:admin:dev >/tmp/admin-dev.log 2>&1 &
+    for _ in $(seq 1 90); do curl -fs http://localhost:3001/ >/dev/null && break; sleep 2; done
+    touch /tmp/dev-env.ready
+  ' >/dev/null 2>&1 &
   echo "Dev stack starting in the background (log: /tmp/dev-env.log; ready when /tmp/dev-env.ready exists)."
 else
   echo "Docker is not available; the dev stack was not started (see /var/log/dockerd.log)." >&2

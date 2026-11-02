@@ -25,6 +25,8 @@
     "admin:typecheck": "pnpm --filter effekt-admin-v2 typecheck",
     "admin:test": "pnpm --filter effekt-admin-v2 test",
     "dev:env:up": "docker compose -f compose.dev.yml up -d --build --wait",
+    "cloud:env:up": "docker compose -f compose.dev.yml -f compose.cloud.yml up -d --wait",
+    "cloud:admin:dev": "VITE_AUTH_MODE=dev VITE_API_URL=http://localhost:5050 VITE_DEV_AUTH_TOKEN_URL=/dev-auth/effekt/token pnpm --filter effekt-admin-v2 dev",
     "dev:env:down": "docker compose -f compose.dev.yml down",
     "dev:env:reset": "docker compose -f compose.dev.yml down -v && pnpm dev:env:up",
     "dev:env:logs": "docker compose -f compose.dev.yml logs -f api",

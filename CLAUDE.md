@@ -27,9 +27,13 @@ All data is generated and fake; nothing local touches Auth0, payment providers o
 ## Cloud sessions (claude.ai/code, Claude Tag)
 
 The `effekt-platform` cloud environment (docs/claude-cloud.md) has Node 24, pnpm, Docker and
-warm caches. The SessionStart hook runs `pnpm install` and starts `pnpm dev:env:up` in the
-background: check `/tmp/dev-env.ready` (or `tail /tmp/dev-env.log`) before using the API or
-admin, and don't start a second stack. Use the Node 24 on PATH (`node -v`), not /opt/node22.
+warm caches. The SessionStart hook runs `pnpm install` and starts the stack in the background:
+`pnpm cloud:env:up` (MySQL and the mock login in Docker, the API on :5050 from the VM's install)
+and then `pnpm cloud:admin:dev` (admin on :3001). Check `/tmp/dev-env.ready` (logs in
+`/tmp/dev-env.log`, `/tmp/admin-dev.log`) before using them, and don't start a second stack. Use
+`cloud:env:up` rather than `dev:env:up`: containers here can't install npm packages. Use the
+Node 24 on PATH (`node -v`), not /opt/node22. For the website's full-stack e2e use
+`E2E_BACKEND_FROM_HOST=1 pnpm e2e:fullstack` (as CI does), for the same reason.
 
 ## Rules
 

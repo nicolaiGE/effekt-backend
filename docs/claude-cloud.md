@@ -5,10 +5,17 @@ Anthropic-hosted VM: Ubuntu 24.04, about 4 vCPUs, 16 GB RAM and 30 GB disk. The 
 fresh clone of this repository. Two pieces make it ready to work in this repo within a minute or
 two of starting:
 
-| Piece                                                                 | Where                                     | Runs                                   | Does                                                                          |
-| --------------------------------------------------------------------- | ----------------------------------------- | -------------------------------------- | ----------------------------------------------------------------------------- |
-| [`scripts/cloud/setup.sh`](../scripts/cloud/setup.sh)                 | the environment's **Setup script** field  | once; the result is cached for ~7 days | Node 24 + pnpm, Docker images, a warm pnpm store, the API dev image           |
-| [`scripts/cloud/session-start.sh`](../scripts/cloud/session-start.sh) | `.claude/settings.json` SessionStart hook | every session start and resume         | Node 24 on PATH, dockerd, `pnpm install`, `pnpm dev:env:up` in the background |
+| Piece                                                                 | Where                                     | Runs                                   | Does                                                                      |
+| --------------------------------------------------------------------- | ----------------------------------------- | -------------------------------------- | ------------------------------------------------------------------------- |
+| [`scripts/cloud/setup.sh`](../scripts/cloud/setup.sh)                 | the environment's **Setup script** field  | once; the result is cached for ~7 days | Node 24 + pnpm, Docker images, a warm pnpm store                          |
+| [`scripts/cloud/session-start.sh`](../scripts/cloud/session-start.sh) | `.claude/settings.json` SessionStart hook | every session start and resume         | Node 24 on PATH, dockerd, `pnpm install`, the dev stack in the background |
+
+Containers in the hosted VM can pull images but can't install npm packages: the sandbox's proxy
+only applies to the VM itself, so a `pnpm install` inside a container fails. Cloud sessions
+therefore run only MySQL and the mock login in Docker. The API and the migrate/seed step run from
+the plain Node image with the VM's own install mounted ([`compose.cloud.yml`](../compose.cloud.yml),
+`pnpm cloud:env:up`, the same approach as CI's `compose.e2e-ci.yml`), and the admin runs on the VM
+(`pnpm cloud:admin:dev`).
 
 The hook exits immediately outside the cloud (`CLAUDE_CODE_REMOTE` isn't `true`), so it doesn't
 affect local Claude Code sessions. [CLAUDE.md](../CLAUDE.md) tells Claude how to work here.
@@ -25,6 +32,7 @@ organization; the form has no sharing setting.
 
   ```
   nodejs.org
+  pkg-containers.githubusercontent.com
   binaries.prisma.sh
   download.cypress.io
   cdn.cypress.io
@@ -70,4 +78,8 @@ Later sessions start from the cache. If something is off, ask Claude to run
 - **Docker doesn't start:** see `/var/log/dockerd.log`. The docs list Docker and
   `docker compose` as supported, but don't say how the daemon is started; both scripts start
   `dockerd` if it isn't running.
-- **A domain is blocked:** add it to the allowed domains above, and to this page.
+- **A domain is blocked:** add it to the allowed domains above, and to this page. Registries often
+  redirect downloads to another host: ghcr.io serves image layers from
+  `pkg-containers.githubusercontent.com`.
+- **A container needs npm packages:** it can't install them in the VM. Run that process from
+  the VM's install instead, as `compose.cloud.yml` does.
