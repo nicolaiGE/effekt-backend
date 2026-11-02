@@ -7,28 +7,46 @@
 # can reach nothing but the effekt-previews Cloud SQL instance.
 # Fork PRs never deploy. Infrastructure: scripts/preview/provision.sh.
 # Only PRs with the `preview` label get a preview; removing the label tears it down.
+#
+# Pushes to main (job `main`) keep PR previews fast: they build main's preview image, which fills
+# the Docker layer cache that PR builds read (and never write: a PR's build must not be able to
+# poison another's), and seed a template database that PR seed jobs clone instead of migrating
+# and seeding from scratch (docs/preview-environments.md#speed).
 name: Preview
 
 on:
   pull_request_target: # zizmor: ignore[dangerous-triggers] -- needed for credentials; PR code is only built, see the header
     types: [opened, reopened, synchronize, ready_for_review, labeled, unlabeled, closed]
+  push:
+    branches: [main]
+    paths:
+      - apps/api/**
+      - apps/admin/**
+      - packages/**
+      - package.json
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+      - scripts/preview/**
+      - .github/workflows/preview.yml
 
 permissions: {}
 
 # One preview per PR: a push cancels the PR's run in flight and deploys the new commit. Other
 # labels get a group of their own, so labelling a PR doesn't cancel its deploy.
+# Pushes to main share one group: a newer main supersedes the cache and template run in flight.
 concurrency:
-  group: preview-pr-${{ github.event.pull_request.number }}${{ (github.event.action == 'labeled' || github.event.action == 'unlabeled') && github.event.label.name != 'preview' && format('-{0}', github.run_id) || '' }}
+  group: ${{ github.event_name == 'push' && 'preview-main' || format('preview-pr-{0}{1}', github.event.pull_request.number, ((github.event.action == 'labeled' || github.event.action == 'unlabeled') && github.event.label.name != 'preview') && format('-{0}', github.run_id) || '') }}
   cancel-in-progress: true
 
 env:
   PR: ${{ github.event.pull_request.number }}
-  SHA: ${{ github.event.pull_request.head.sha }}
+  SHA: ${{ github.event.pull_request.head.sha || github.sha }}
   PREVIEW_MAX: ${{ vars.PREVIEW_MAX || '5' }}
 
 jobs:
   deploy:
     if: >-
+      github.event_name == 'pull_request_target' &&
       github.event.action != 'closed' &&
       github.event.action != 'unlabeled' &&
       contains(github.event.pull_request.labels.*.name, 'preview') &&
@@ -82,21 +100,36 @@ jobs:
         if: steps.support.outputs.enabled == 'true'
         run: trusted/scripts/preview/pr-comment.sh "$PR" building --sha "$SHA"
 
-      # Before authenticating: the PR's Dockerfile and code run here, with no credentials around
-      # (the checkouts don't keep tokens, and the GCP credentials don't exist yet).
-      - name: Build the preview image
+      - name: Name the image
         if: steps.support.outputs.enabled == 'true'
         env:
-          # The job-level token isn't needed to build; keep it out of this step's environment
-          GH_TOKEN: ""
           REGION: ${{ vars.PREVIEW_GCP_REGION }}
           PROJECT: ${{ vars.PREVIEW_GCP_PROJECT }}
-          DOCKERFILE: ${{ steps.support.outputs.dockerfile }}
         # IMAGE is built from repository variables and the PR number and head SHA only
         run: | # zizmor: ignore[github-env]
-          image="${REGION}-docker.pkg.dev/${PROJECT}/effekt-previews/backend:pr-${PR}-${SHA}"
-          echo "IMAGE=${image}" >> "$GITHUB_ENV"
-          DOCKER_BUILDKIT=1 docker build -f "$DOCKERFILE" -t "$image" pr
+          echo "IMAGE=${REGION}-docker.pkg.dev/${PROJECT}/effekt-previews/backend:pr-${PR}-${SHA}" >> "$GITHUB_ENV"
+
+      - name: Set up Docker Buildx
+        if: steps.support.outputs.enabled == 'true'
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      # Before authenticating: the PR's Dockerfile and code run here, with no credentials around
+      # (the checkouts don't keep tokens, and the GCP credentials don't exist yet). The layer
+      # cache is only READ here (cache-from, no cache-to); main's builds write it (job `main`).
+      # The PR's Dockerfile runs inside BuildKit's build containers, which see neither this
+      # job's environment nor the cache token.
+      - name: Build the preview image
+        if: steps.support.outputs.enabled == 'true'
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: pr
+          file: ${{ steps.support.outputs.dockerfile }}
+          tags: ${{ env.IMAGE }}
+          load: true
+          push: false
+          provenance: false
+          sbom: false
+          cache-from: type=gha,scope=preview-image
 
       - name: Authenticate to Google Cloud
         if: steps.support.outputs.enabled == 'true'
@@ -148,6 +181,7 @@ jobs:
 
   teardown:
     if: >-
+      github.event_name == 'pull_request_target' &&
       ((github.event.action == 'closed' && contains(github.event.pull_request.labels.*.name, 'preview')) ||
        (github.event.action == 'unlabeled' && github.event.label.name == 'preview')) &&
       github.event.pull_request.head.repo.full_name == github.repository &&
@@ -189,3 +223,59 @@ jobs:
             echo "Deleted because the \`preview\` label was removed." > "$RUNNER_TEMP/note.md"
           fi
           trusted/scripts/preview/pr-comment.sh "$PR" torn-down --sha "$SHA" --note-file "$RUNNER_TEMP/note.md"
+
+  # Push to main: fill the PR builds' layer cache and seed the template database.
+  main:
+    if: github.event_name == 'push' && vars.PREVIEW_WIF_PROVIDER != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Check out main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Name the image
+        env:
+          REGION: ${{ vars.PREVIEW_GCP_REGION }}
+          PROJECT: ${{ vars.PREVIEW_GCP_PROJECT }}
+        run: | # zizmor: ignore[github-env]
+          echo "IMAGE=${REGION}-docker.pkg.dev/${PROJECT}/effekt-previews/backend:main-${SHA}" >> "$GITHUB_ENV"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Build the preview image (and write the layer cache)
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: apps/api/Dockerfile.preview
+          tags: ${{ env.IMAGE }}
+          load: true
+          push: false
+          provenance: false
+          sbom: false
+          cache-from: type=gha,scope=preview-image
+          cache-to: type=gha,scope=preview-image,mode=max
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ vars.PREVIEW_WIF_PROVIDER }}
+          service_account: ${{ vars.PREVIEW_CI_SA }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+
+      - name: Push the image
+        env:
+          REGION: ${{ vars.PREVIEW_GCP_REGION }}
+        run: |
+          gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+          docker push "$IMAGE"
+
+      - name: Seed the template database
+        run: scripts/preview/template.sh "$IMAGE" "$SHA"

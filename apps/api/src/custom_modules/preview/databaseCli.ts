@@ -8,12 +8,29 @@
  *   node dist/custom_modules/preview/databaseCli.js reset          drop + create DB_NAME
  *   node dist/custom_modules/preview/databaseCli.js analyze        refresh table statistics
  *   node dist/custom_modules/preview/databaseCli.js drop           drop DB_NAME (teardown)
+ *   … find-template <seed key> [--exact]   newest suitable template database (or nothing)
+ *   … clone <template>                      copy a template into DB_NAME
+ *   … mark-template                         mark DB_NAME (a template) complete
+ *   … prune-templates <keep>                drop all but the newest <keep> templates
  *
+ * Templates: templateDatabase.ts and docs/preview-environments.md#database-templates.
  * Every command runs the startup guard first, so it can only ever touch a preview_* database
  * on the previews instance.
  */
 import * as mysql from "mysql2/promise";
 import { checkPreviewEnvironment, formatViolations } from "./environmentGuard";
+import {
+  cloneDatabase,
+  findTemplate,
+  localMigrations,
+  markTemplate,
+  pruneTemplates,
+  SAFE_TEMPLATE_NAME,
+  SEED_KEY,
+} from "./templateDatabase";
+
+// The API package's migrations; the CLI runs in apps/api (scripts/preview/migrate-and-seed.sh).
+const MIGRATIONS_DIR = "prisma/migrations";
 
 // Stricter than the guard's prefix check: the name is interpolated into DDL.
 const SAFE_PREVIEW_DB_NAME = /^preview_[a-z0-9_]{1,56}$/;
@@ -72,6 +89,18 @@ const withRetries = async <T>(fn: () => Promise<T>, attempts = 10): Promise<T> =
   }
 };
 
+const withConnection = async <T>(
+  env: NodeJS.ProcessEnv,
+  fn: (conn: mysql.Connection) => Promise<T>,
+): Promise<T> => {
+  const conn = await withRetries(() => serverConnection(env));
+  try {
+    return await fn(conn);
+  } finally {
+    await conn.end();
+  }
+};
+
 export const run = async (args: string[], env: NodeJS.ProcessEnv = process.env) => {
   const [command, flavour] = args;
   const name = guard(env);
@@ -116,9 +145,51 @@ export const run = async (args: string[], env: NodeJS.ProcessEnv = process.env) 
       }
       return;
     }
+    case "find-template": {
+      if (!SEED_KEY.test(args[1] ?? "")) throw new Error(`Invalid seed key "${args[1] ?? ""}"`);
+      const found = await withConnection(env, (conn) =>
+        findTemplate(conn, args[1] ?? "", localMigrations(MIGRATIONS_DIR), {
+          exact: args.includes("--exact"),
+        }),
+      );
+      if (found) process.stdout.write(found);
+      return;
+    }
+    case "clone": {
+      if (!SAFE_TEMPLATE_NAME.test(args[1] ?? "")) {
+        throw new Error(`Not a template database: ${args[1] ?? ""}`);
+      }
+      const stats = await withConnection(env, (conn) => cloneDatabase(conn, args[1] ?? "", name));
+      if (stats.skippedViews.length > 0) {
+        console.log(
+          `Skipped views that are broken in the template too: ${stats.skippedViews.join(", ")}`,
+        );
+      }
+      console.log(
+        `Cloned ${args[1]} into ${name}: ${stats.tables} tables, ${stats.rows} rows, ` +
+          `${stats.routines} routines, ${stats.views} views, ${stats.triggers} triggers` +
+          `${stats.seedMeta ? ", seed metadata" : " (no seed metadata: no top-up)"} in ${stats.ms} ms`,
+      );
+      return;
+    }
+    case "mark-template":
+      if (!SAFE_TEMPLATE_NAME.test(name)) throw new Error(`Not a template database: ${name}`);
+      await withConnection(env, (conn) => markTemplate(conn, name));
+      console.log(`Marked ${name} as a complete template`);
+      return;
+    case "prune-templates": {
+      const keep = Number(args[1] ?? "3");
+      if (!Number.isInteger(keep) || keep < 1) throw new Error("prune-templates <keep ≥ 1>");
+      const dropped = await withConnection(env, (conn) => pruneTemplates(conn, keep, name));
+      console.log(
+        dropped.length ? `Dropped old templates: ${dropped.join(", ")}` : "No old templates",
+      );
+      return;
+    }
     default:
       throw new Error(
-        `Unknown command "${command}" (guard | url prisma|mysql2 | reset | analyze | drop)`,
+        `Unknown command "${command}" (guard | url prisma|mysql2 | reset | analyze | drop | ` +
+          "find-template | clone | mark-template | prune-templates)",
       );
   }
 };

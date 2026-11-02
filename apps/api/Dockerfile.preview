@@ -29,18 +29,29 @@ WORKDIR /usr/src/app/apps/api
 RUN pnpm exec prisma generate
 RUN pnpm run build
 
-# The seed (prisma/seed.ts -> prisma/devdata, which imports src/custom_modules/regranting)
-# compiled to plain JS, so the release image needs neither ts-node nor typescript.
+# The seed (prisma/seed.ts -> prisma/devdata, which imports src/custom_modules/regranting) and
+# the top-up (prisma/devdata/topup.ts, used after cloning a template database) compiled to plain
+# JS, so the release image needs neither ts-node nor typescript.
 RUN pnpm exec tsc --outDir dist-seed --rootDir . --module commonjs --target ES2022 \
-      --esModuleInterop --skipLibCheck --strictNullChecks --allowJs false prisma/seed.ts
+      --esModuleInterop --skipLibCheck --strictNullChecks --allowJs false \
+      prisma/seed.ts prisma/devdata/topup.ts
+# Fingerprint of everything that decides the seeded data. A preview only clones a template
+# database (scripts/preview/migrate-and-seed.sh) seeded by code with the same fingerprint.
+RUN find prisma/seed.ts prisma/devdata prisma/dev src/custom_modules/regranting -type f -print0 \
+      | sort -z | xargs -0 sha256sum | sha256sum | cut -c1-12 > dist-seed/SEED_KEY
 
 # Admin: preview auth ("Continue as…"), same-origin API. Allowed only with --mode preview.
 WORKDIR /usr/src/app
 RUN VITE_AUTH_MODE=preview pnpm --dir apps/admin run build:preview
 
 # ---- Release ----
-FROM node:24.22.1
+# Slim Debian plus OpenSSL (Prisma's schema engine links against it), as in apps/api/Dockerfile:
+# a much smaller image, so Cloud Run starts the seed job and the service faster.
+FROM node:24.22.1-slim
 
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends openssl \
+    && rm -rf /var/lib/apt/lists/*
 WORKDIR /usr/src/app
 RUN corepack enable
 ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0 CHECKPOINT_DISABLE=1 NO_UPDATE_NOTIFIER=1

@@ -9,6 +9,7 @@ the change. Nobody logs in, and nothing in a preview can reach a real person, ba
 provider.
 
 - [How it works](#how-it-works)
+- [Speed](#speed)
 - [Tester guide](#tester-guide)
 - [Iterating with @claude](#iterating-with-claude)
 - [Limit and clean-up](#limit-and-clean-up)
@@ -27,22 +28,26 @@ Previews are opt-in: add the `preview` label to a PR to deploy one. Pushes redep
 ```
 PR labelled `preview` / pushed ──► .github/workflows/preview.yml (pull_request_target, runs the main copy)
                          1. sticky PR comment: Building
-                         2. docker build apps/api/Dockerfile.preview (PR code, no credentials yet)
+                         2. docker build apps/api/Dockerfile.preview (PR code, no credentials yet;
+                            reads main's layer cache)
                          3. log in to GCP (workload identity, no keys)
                          4. limit check (PREVIEW_MAX)        ── over: comment "Not created", stop
                          5. push image  ─► Artifact Registry effekt-previews
                          6. Cloud Run Job  effekt-preview-seed-pr-<n>:
-                              drop + create preview_pr_<n>, prisma migrate deploy, seed
+                              clone a template database into preview_pr_<n>, apply the PR's
+                              newer migrations, top up (or: drop + create, migrate, seed)
                          7. Cloud Run service effekt-preview-pr-<n> (min 0, max 2, public)
                          8. sticky PR comment: Ready, URL, commit, seed time
 PR closed ─────────────► delete service, job, database, images; comment: Torn down
+push to main ──────────► preview.yml job `main`: build main's image (writes the layer cache),
+                         seed a template database preview_tpl_<seed key>_<commit>
 every night ───────────► .github/workflows/preview-janitor.yml (closed PRs, idle previews)
 ```
 
 - **One preview per PR, replaced on every push.** The service name and URL stay the same for
   the PR's lifetime. A push cancels the PR's run in flight (concurrency group
-  `preview-pr-<n>`), cancels a seed still running, deploys the new commit and re-seeds the
-  database from scratch.
+  `preview-pr-<n>`), cancels a seed still running, deploys the new commit and recreates the
+  database (from a template where possible, see [Speed](#speed)).
 - **One image, two roles.** `apps/api/Dockerfile.preview` builds the backend, compiles the seed, and
   builds the admin with `vite build --mode preview`. Express serves the admin at `/` from the
   same origin as the API (`apps/api/src/custom_modules/preview/previewHttp.ts`): hashed assets under
@@ -61,6 +66,35 @@ every night ───────────► .github/workflows/preview-janit
   leaves Google Cloud, the CI identity needs no Cloud SQL permission at all, and the instance
   needs no authorised networks. The cost is one extra Cloud Run resource per PR, deleted with
   the preview.
+
+## Speed
+
+A preview used to take about 6½ minutes: 2:12 to build the image from scratch, 1:12 for Cloud
+Run to start the seed job from a large image, 1:43 to apply every migration and generate all
+the data, plus pushing and deploying. Three things cut that down:
+
+- **Layer cache.** Pushes to main build main's preview image and write BuildKit's layer cache
+  (GitHub Actions cache, scope `preview-image`). PR builds only read it. While a PR doesn't
+  change `pnpm-lock.yaml`, the dependency layers are reused and only the API and admin are
+  compiled. PRs never write the cache, so one PR can't poison another's build.
+- **Slim runtime image.** The release stage is `node:24.22.1-slim` plus OpenSSL (as in the
+  production image), so Cloud Run pulls far less before the seed job and the service start.
+- **Database templates.** Pushes to main also seed a template database,
+  `preview_tpl_<seed key>_<commit>` (`scripts/preview/template.sh`, Cloud Run Job
+  `effekt-preview-template`), unless one with the same seed key and migrations already exists.
+  The newest three are kept. A PR's seed job (`migrate-and-seed.sh`) then:
+  1. looks for the newest complete template with the PR's **seed key** (`dist-seed/SEED_KEY`, a
+     fingerprint of `prisma/seed.ts`, `prisma/devdata`, `prisma/dev` and the regranting module
+     the seed uses) whose applied migrations **all exist in the PR**;
+  2. clones it into `preview_pr_<n>` inside the instance (`templateDatabase.ts`: tables and
+     rows, then routines, views and triggers, each with its own `sql_mode`; triggers last, so
+     copying doesn't fire them);
+  3. runs `prisma migrate deploy` (only the PR's newer migrations), tops the generated data up to
+     today (`prisma/devdata/topup.ts`) and refreshes table statistics.
+
+  A PR that changes the seed, a branch older than every template, or any error on the way
+  falls back to the full seed, as before (`migrate-and-seed.sh full` forces it). The job log
+  says which path it took and how long it took.
 
 ## Tester guide
 
@@ -138,6 +172,9 @@ environment must be harmless. The layers, from the outside in:
 - Workflow permissions are least privilege: `permissions: {}` at the top; jobs get
   `contents: read`, `pull-requests: write` (the comment) and `id-token: write` (the cloud login).
 - Third-party actions are pinned to commit SHAs.
+- The Docker layer cache is written only by job `main` (pushes to main, trusted code) and only
+  read by PR builds, inside BuildKit, which doesn't expose the cache token to the PR's
+  Dockerfile.
 
 **What the identities can do**
 
@@ -183,7 +220,10 @@ password or data.
 - **Every response** carries `X-Robots-Tag: noindex, nofollow`.
 - **Rate limiting, honeypot, CORS and the rest of the middleware stay as they are.**
 - **Synthetic data only:** the seed is generated (`apps/api/prisma/devdata`); no production rows exist
-  anywhere in the previews instance.
+  anywhere in the previews instance. Template databases are seeded from main's image the same
+  way. All previews share one database user, so a PR's code could change a template (as it
+  could another preview's database); the worst case is odd synthetic data in other previews
+  until main's next template.
 
 What the guard is not: a PR can change the guard itself, since it is part of the PR's code.
 The hard boundary is the infrastructure above (a runtime account that can reach only the
