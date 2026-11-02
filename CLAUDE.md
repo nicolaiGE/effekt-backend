@@ -15,7 +15,7 @@ Gi Effektivt's platform in one pnpm workspace. [README.md](README.md) has the ov
 
 ```bash
 pnpm install
-pnpm dev:env:up        # MySQL with fake data, mock login, API :5050, admin :3001 (signed in)
+pnpm dev:env:up        # MySQL with fake data, mock login, API :5050, admin :3001 (dev login)
 pnpm web:dev           # website :3000 (cp apps/web/.env.example apps/web/.env.local first)
 pnpm -s dev:token      # an API token for curl
 pnpm lint && pnpm typecheck && pnpm test         # everything; or api:/web:/admin: test|typecheck
@@ -23,6 +23,10 @@ pnpm e2e:fullstack     # website Cypress specs against a real API + DB (docs/e2e
 ```
 
 All data is generated and fake; nothing local touches Auth0, payment providers or production.
+Lint is `pnpm lint` (oxlint) from the repo root; don't run eslint in `apps/admin`. The admin opens
+on /login: a fresh browser has to click "Sign in with dev token" (`pnpm cloud:shot` does this).
+For admin changes, run the specs for the area you touched (docs/admin-building.md › Which specs).
+Leave Playwright's `test-results/`, `playwright-report/` and `blob-report/` alone (gitignored).
 
 ## Cloud sessions (claude.ai/code, Claude Tag)
 
@@ -33,7 +37,9 @@ and then `pnpm cloud:admin:dev` (admin on :3001). Check `/tmp/dev-env.ready` (lo
 `/tmp/dev-env.log`, `/tmp/admin-dev.log`) before using them, and don't start a second stack. Use
 `cloud:env:up` rather than `dev:env:up`: containers here can't install npm packages. Use the
 Node 24 on PATH (`node -v`), not /opt/node22. For the website's full-stack e2e use
-`E2E_BACKEND_FROM_HOST=1 pnpm e2e:fullstack` (as CI does), for the same reason.
+`E2E_BACKEND_FROM_HOST=1 pnpm e2e:fullstack` (as CI does), for the same reason. Playwright uses
+the image's Chromium via `PW_CHROMIUM_PATH` (set by the hook). `pnpm cloud:shot /donors [out.png]`
+saves a signed-in screenshot of an admin page (default `/tmp/shot.png`).
 
 ## Rules
 
@@ -51,9 +57,12 @@ Node 24 on PATH (`node -v`), not /opt/node22. For the website's full-stack e2e u
   request against `main` with a clear title, and add the `preview` label, so the API and admin
   get a preview environment (the website gets a Vercel preview automatically). Open it as a draft
   if you have open questions. Then wait for the preview link in the PR comment and include it
-  in your reply.
-- If pushing fails (e.g. 403), say so plainly, keep the work committed, and tell the person to
-  ask Håkon (GitHub admin) to give the Claude GitHub App access to this repository.
+  in your reply. In the cloud there is no `gh`: use the GitHub tools, add the label as a separate
+  update, and watch the preview workflow's PR comment go from Building to Ready (a few minutes;
+  docs/claude-cloud.md › Pull requests).
+- Before changing code, check push access: `git push --dry-run origin HEAD:refs/heads/<branch>`.
+  On a 403 (now or later), tell the person right away, keep the work committed, and ask them to
+  have Håkon (GitHub admin) give the Claude GitHub App access to this repository.
 
 ## Working with non-technical colleagues
 

@@ -72,6 +72,35 @@ While iterating, run only what your change touches:
 - Playwright already runs files in parallel. Several agents test at once, so don't raise `--workers`.
 - Backend: `pnpm test src/__test__/<file>.spec.ts` (or a part of the name) in `apps/api/`: one spec file (Vitest).
 
+### Which specs for which change
+
+Run these (in `apps/admin/`, one `playwright test` call) instead of the whole gate while you work, and when the
+gate can't run (cloud sessions):
+
+| Change                                     | Run                                                                                                        |
+| ------------------------------------------ | ---------------------------------------------------------------------------------------------------------- |
+| Side menu, navigation, app shell           | `vitest run src/components/layout`; `tests/interaction/{keyboard,mobile}.spec.ts` (go-to keys, phone menu) |
+| Lists, filters, search, URL state          | `tests/interaction/{filters,history,keyboard}.spec.ts`                                                     |
+| Record panels                              | `tests/interaction/{panels,keyboard,mobile}.spec.ts`                                                       |
+| Dates, money input                         | `tests/interaction/dates.spec.ts`; `vitest run src/lib`                                                    |
+| Analysis                                   | `tests/interaction/analysis.spec.ts`                                                                       |
+| Agreements, AvtaleGiro, inflation          | `tests/interaction/{avtalegiro-charges,cancelled-agreements,inflation}.spec.ts`                            |
+| Donors, intents                            | `tests/interaction/{donor-register,intents}.spec.ts`                                                       |
+| Import, review queue                       | `tests/interaction/review-bulk.spec.ts`                                                                    |
+| Impact                                     | `tests/interaction/impact.spec.ts`                                                                         |
+| Regranting                                 | `tests/interaction/regranting*.spec.ts`                                                                    |
+| Home, loading states, first load           | `tests/interaction/loading.spec.ts`                                                                        |
+| Auth, login                                | `pnpm test:prod-smoke`                                                                                     |
+| Shared component markup or look, `/design` | `--project=visual` (macOS only: the baselines are `-darwin`; skip it on Linux and in the cloud)            |
+
+The visual screenshots include the side menu, so a menu change changes them: update the baselines on a Mac
+(`pnpm test:visual:update`) or say in the PR that they need updating.
+
+### Known flaky tests
+
+None known. Re-run a failure on its own (`--last-failed`, or `--repeat-each=20` on that test) before calling it flaky,
+and add it here with the cause if it is.
+
 Don't pipe a long run through `tail`: output arrives only when the run ends, so a hang looks like slowness. Re-run a
 failing test on its own before assuming flakiness.
 

@@ -69,6 +69,41 @@ The first session runs the setup script; the session log shows its `[setup +Ns]`
 Later sessions start from the cache. If something is off, ask Claude to run
 `cat /tmp/dev-env.log`, `node -v`, `docker compose -f compose.dev.yml ps` or `check-tools`.
 
+## Browsers and screenshots
+
+Playwright can't download its browsers in the VM (their CDN isn't on the allowlist), and the
+repository's Playwright wants a newer Chromium build than the one the image ships in
+`/opt/pw-browsers`. The session hook therefore exports `PW_CHROMIUM_PATH`, the newest
+`/opt/pw-browsers/chromium-*/chrome-linux*/chrome`, through `$CLAUDE_ENV_FILE`, and the admin's
+Playwright configs launch that executable when the variable is set. It's unset locally and in CI,
+where Playwright uses its own browser. Set it yourself to try another build; the hook leaves an
+existing value alone.
+
+The admin on :3001 uses dev auth: a fresh browser lands on /login and has to click **Sign in with
+dev token** (the token comes from the mock login and lasts for that tab). To see a page:
+
+```bash
+pnpm cloud:shot /donors                # signed in, 1440×900, saved to /tmp/shot.png
+pnpm cloud:shot "/donors?q=kari" a.png # SHOT_FULL_PAGE=1 for the whole page, ADMIN_URL for another admin
+```
+
+[`scripts/cloud/shot.mjs`](../scripts/cloud/shot.mjs) uses the admin's Playwright and works
+locally too. The visual screenshot tests have macOS baselines only; skip `--project=visual` here
+and run the specs for the area instead (admin-building.md › Which specs for which change).
+
+## Pull requests
+
+`gh` doesn't work in sessions. Claude pushes with git and uses its GitHub tools for the rest:
+
+1. At the start of a task that changes code, `git push --dry-run origin HEAD:refs/heads/<branch>`.
+   A 403 means the Claude GitHub App can't write to this repository; say so at once.
+2. Push the branch and create the PR against `main`.
+3. Add the `preview` label in a separate update of the PR (labels are set on the PR as an issue).
+4. The preview workflow posts one "Preview environment" comment on the PR and edits it: Status
+   **Building**, then **Ready** with the URL after a few minutes (or **Failed** with a link to
+   the run). Read the PR's comments until it says Ready and give that URL in the reply. The
+   website's Vercel preview is a separate comment.
+
 ## When it misbehaves
 
 - **"Node 24 is missing"** at session start: the setup script failed or wasn't saved. Check the
@@ -81,5 +116,7 @@ Later sessions start from the cache. If something is off, ask Claude to run
 - **A domain is blocked:** add it to the allowed domains above, and to this page. Registries often
   redirect downloads to another host: ghcr.io serves image layers from
   `pkg-containers.githubusercontent.com`.
+- **Playwright can't find or download a browser:** check `echo $PW_CHROMIUM_PATH` and
+  `ls /opt/pw-browsers`. The hook prints "No Chromium in /opt/pw-browsers" when it found none.
 - **A container needs npm packages:** it can't install them in the VM. Run that process from
   the VM's install instead, as `compose.cloud.yml` does.

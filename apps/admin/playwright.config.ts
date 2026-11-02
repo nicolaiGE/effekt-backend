@@ -15,6 +15,9 @@ import { devPort } from "./scripts/dev-port.mjs";
 // Each checkout has its own port (scripts/dev-port.mjs; PW_PORT overrides). A server already
 // listening there is reused outside CI, so `pnpm pw:serve` in the background makes runs faster.
 const port = devPort();
+// Cloud sessions can't download Playwright's browser; the session hook points this at the
+// Chromium the VM image ships (docs/claude-cloud.md). Unset locally and in CI.
+const executablePath = process.env.PW_CHROMIUM_PATH || undefined;
 
 export default defineConfig({
   testDir: "tests",
@@ -38,6 +41,7 @@ export default defineConfig({
     locale: "nb-NO",
     timezoneId: "Europe/Oslo",
     trace: "retain-on-failure",
+    launchOptions: { executablePath },
   },
   projects: [
     { name: "visual", testDir: "tests/visual", use: { ...devices["Desktop Chrome"] } },

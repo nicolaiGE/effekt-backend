@@ -6,6 +6,7 @@ dist/
 *.tsbuildinfo
 test-results/
 playwright-report/
+blob-report/
 .screenshots/
 .debug/
 .tanstack/

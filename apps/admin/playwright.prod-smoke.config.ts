@@ -30,6 +30,8 @@ export default defineConfig({
     locale: "nb-NO",
     timezoneId: "Europe/Oslo",
     trace: "retain-on-failure",
+    // See playwright.config.ts.
+    launchOptions: { executablePath: process.env.PW_CHROMIUM_PATH || undefined },
   },
   webServer: {
     // One build per run, into node_modules so it never lands next to a real dist/.

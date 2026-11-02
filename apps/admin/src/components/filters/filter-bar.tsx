@@ -200,12 +200,17 @@ function SearchBox({
         }}
         onKeyDown={(event) => {
           if (event.key === "Escape") {
+            // Drop a pending commit too, or it brings the typed text back after the clear.
+            commit.cancel();
             if (draft) {
               setDraft("");
               onChange(undefined);
             } else inputRef.current?.blur();
           }
-          if (event.key === "Enter") onChange(draft.trim() || undefined);
+          if (event.key === "Enter") {
+            commit.cancel();
+            onChange(draft.trim() || undefined);
+          }
           // ↓ goes from the search box to the list's row cursor.
           if (event.key === "ArrowDown") {
             const row = document.querySelector<HTMLElement>(
@@ -223,6 +228,7 @@ function SearchBox({
           type="button"
           aria-label="Clear search"
           onClick={() => {
+            commit.cancel();
             setDraft("");
             onChange(undefined);
           }}

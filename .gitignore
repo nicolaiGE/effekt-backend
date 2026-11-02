@@ -11,5 +11,10 @@ coverage/
 !.env.docker
 dist-types/
 
+# Playwright output (root and apps/*)
+test-results/
+playwright-report/
+blob-report/
+
 # pnpm store created by containers that install into this checkout
 .pnpm-store/

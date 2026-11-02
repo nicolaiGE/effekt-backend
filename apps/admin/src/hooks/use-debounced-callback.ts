@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef } from "react";
 
+/** A debounced `callback`. `.cancel()` drops a pending call (e.g. when the input is cleared). */
 export function useDebouncedCallback<Args extends unknown[]>(
   callback: (...args: Args) => void,
   delay = 300,
@@ -12,12 +13,12 @@ export function useDebouncedCallback<Args extends unknown[]>(
   });
   useEffect(() => () => clearTimeout(timer.current), []);
 
-  return useMemo(
-    () =>
-      (...args: Args) => {
-        clearTimeout(timer.current);
-        timer.current = setTimeout(() => callbackRef.current(...args), delay);
-      },
-    [delay],
-  );
+  return useMemo(() => {
+    function debounced(...args: Args) {
+      clearTimeout(timer.current);
+      timer.current = setTimeout(() => callbackRef.current(...args), delay);
+    }
+    debounced.cancel = () => clearTimeout(timer.current);
+    return debounced;
+  }, [delay]);
 }

@@ -2,7 +2,7 @@
 # SessionStart hook (.claude/settings.json): prepares a Claude Code cloud session (claude.ai/code,
 # Claude Tag). Does nothing on a local machine. The heavy lifting (Node 24, pnpm store, Docker
 # images) is cached by scripts/cloud/setup.sh; this does the per-session part:
-#   1. Node 24 on PATH for Claude's shells
+#   1. Node 24 on PATH for Claude's shells, and PW_CHROMIUM_PATH (the image's Chromium)
 #   2. dockerd running
 #   3. pnpm install (offline-fast from the warm store)
 #   4. the dev stack starting in the background: MySQL with fake data and the mock login in
@@ -21,6 +21,17 @@ if [ -x /opt/node24/bin/node ]; then
   [ -n "${CLAUDE_ENV_FILE:-}" ] && echo 'export PATH=/opt/node24/bin:$PATH' >>"$CLAUDE_ENV_FILE"
 else
   echo "Node 24 is missing: the environment's setup script didn't run (docs/claude-cloud.md)." >&2
+fi
+
+# Playwright can't download its browser here (the CDN isn't allowed), but the image ships some in
+# /opt/pw-browsers. The admin's Playwright configs and `pnpm cloud:shot` use PW_CHROMIUM_PATH.
+if [ -z "${PW_CHROMIUM_PATH:-}" ]; then
+  chromium=$(compgen -G '/opt/pw-browsers/chromium-*/chrome-linux*/chrome' | sort -V | tail -n 1)
+  if [ -n "$chromium" ] && [ -x "$chromium" ]; then
+    [ -n "${CLAUDE_ENV_FILE:-}" ] && echo "export PW_CHROMIUM_PATH=$chromium" >>"$CLAUDE_ENV_FILE"
+  else
+    echo "No Chromium in /opt/pw-browsers; Playwright needs its own browser (docs/claude-cloud.md)." >&2
+  fi
 fi
 
 if ! docker info >/dev/null 2>&1; then
