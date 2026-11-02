@@ -31,6 +31,7 @@ import { organizationsRouter } from "./routes/organizations";
 import { causeAreasRouter } from "./routes/causeareas";
 import { surveyRouter } from "./routes/survey";
 import { mcpRouter } from "./routes/mcp";
+import { mcpClaudeTagRouter } from "./routes/mcpClaudeTag";
 import { oauthRouter, sendAuthorizationServerMetadata } from "./routes/oauth";
 import { getProtectedResourceMetadata } from "./custom_modules/mcp/oauthProtectedResource";
 import { startWebSocketServer } from "./websocket";
@@ -112,10 +113,13 @@ DAO.connect(() => {
   // MCP OAuth (DCR + authorize/token). Claude registers here; we federate login to Auth0.
   app.use("/oauth", oauthRouter);
 
-  //MCP server for Claude Tag (read-only analysis DB). Auth is an Auth0 JWT
-  //with the analysis_mcp permission, not admin. Mounted before honeypot /
+  //MCP server for the team's Claude connectors (read-only analysis DB). Auth is an
+  //Auth0 JWT with the analysis_mcp permission, not admin. Mounted before honeypot /
   //rate-limit / CORS so Anthropic server-to-server calls are not blocked.
   app.use("/mcp", mcpRouter);
+  //MCP server for Claude Tag only (pseudonymised production views + analysis DB,
+  //docs/pseudo-db.md). Auth is a static Bearer token that Claude Tag's proxy attaches.
+  app.use("/mcp-tag", mcpClaudeTagRouter);
 
   //Compress responses (gzip/brotli). Mounted after /mcp so its streamed (SSE) responses are not buffered.
   app.use(compression());

@@ -1,0 +1,5 @@
+{
+  "name": "effekt-data",
+  "description": "Read-only SQL access to Gi Effektivt's data for Claude Tag: pseudonymised live production views (EffektPseudoDB) and the analysis database (EffektAnalysisDB).",
+  "version": "1.0.0"
+}

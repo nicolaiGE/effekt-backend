@@ -64,6 +64,10 @@ module.exports = {
   mcp_db_username: process.env.MCP_DB_USER,
   mcp_db_password: process.env.MCP_DB_PASS,
   mcp_db_name: process.env.MCP_DB_NAME,
+  mcp_tag_db_username: process.env.MCP_TAG_DB_USER,
+  mcp_tag_db_password: process.env.MCP_TAG_DB_PASS,
+  mcp_tag_db_name: process.env.MCP_TAG_DB_NAME,
+  mcp_tag_token: process.env.MCP_TAG_TOKEN,
   // Canonical MCP resource URL advertised in OAuth protected-resource metadata.
   // Defaults to EFFEKT_API_URL + /mcp (https://data.gieffektivt.no/mcp in prod).
   mcp_resource_url: process.env.MCP_RESOURCE_URL,

@@ -89,6 +89,7 @@ Everything lives in [`docs/`](docs).
 | [regranting-downstream.md](docs/regranting-downstream.md) | Downstream regrants                                  |
 | [timestamps.md](docs/timestamps.md)                       | Timestamps and the database clock                    |
 | [functions.md](docs/functions.md)                         | The Cloud Functions                                  |
+| [pseudo-db.md](docs/pseudo-db.md)                         | Pseudonymised production views for Claude and MCP    |
 | [tooling.md](docs/tooling.md)                             | Scripts, versions and tools across the workspace     |
 | [dependencies.md](docs/dependencies.md)                   | Dependency updates, auto-merge and release-age rules |
 | [API routers](apps/api/src/trpc/routers)                  | The API's tRPC routers (the API's reference)         |

@@ -6,6 +6,7 @@ import { handleJsonRpcMessage } from "../custom_modules/mcp/analysisMcpServer";
 import { isAnalysisDbConfigured } from "../custom_modules/analysisDbPool";
 import { isAnalysisMcp } from "../custom_modules/authorization/authMiddleware";
 import { sendMcpAuthChallenge } from "../custom_modules/mcp/oauthProtectedResource";
+import { jsonRpcPostHandler } from "../custom_modules/mcp/jsonRpcHttp";
 
 /**
  * Remote MCP endpoint for Claude Tag / Claude custom connectors.
@@ -85,32 +86,6 @@ mcpRouter.use(requireMcpAuth);
 mcpRouter.get("/", (_req, res) => res.status(405).end());
 mcpRouter.delete("/", (_req, res) => res.status(405).end());
 
-mcpRouter.post("/", async (req, res) => {
-  const body = req.body;
-
-  try {
-    if (Array.isArray(body)) {
-      // JSON-RPC batch: collect responses to requests, drop notifications.
-      const responses: NonNullable<Awaited<ReturnType<typeof handleJsonRpcMessage>>>[] = [];
-      for (const msg of body) {
-        const r = await handleJsonRpcMessage(msg);
-        if (r !== null) responses.push(r);
-      }
-      if (responses.length === 0) return res.status(202).end();
-      return res.json(responses);
-    }
-
-    const response = await handleJsonRpcMessage(body);
-    if (response === null) return res.status(202).end();
-    return res.json(response);
-  } catch (ex) {
-    console.error("MCP route error:", ex);
-    return res.status(500).json({
-      jsonrpc: "2.0",
-      id: null,
-      error: { code: -32603, message: "Internal error" },
-    });
-  }
-});
+mcpRouter.post("/", jsonRpcPostHandler(handleJsonRpcMessage));
 
 export default mcpRouter;
