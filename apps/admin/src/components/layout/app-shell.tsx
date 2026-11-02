@@ -1,6 +1,7 @@
 import { PreviewBanner } from "./preview-banner";
 import { Link, useNavigate, useRouterState, type LinkProps } from "@tanstack/react-router";
 import {
+  ChevronDownIcon,
   ChevronsUpDownIcon,
   HandCoinsIcon,
   KeyRoundIcon,
@@ -10,11 +11,13 @@ import {
   MenuIcon,
   MoonIcon,
   PaletteIcon,
+  PinIcon,
+  PinOffIcon,
   Rows3Icon,
   SearchIcon,
   SunIcon,
 } from "lucide-react";
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useAuth } from "@/auth";
 import {
   DropdownMenu,
@@ -36,7 +39,15 @@ import { strings } from "@/lib/strings";
 import { userIdentity } from "./user-identity";
 import { cn } from "@/lib/utils";
 import { CommandPalette, type PaletteCommand } from "./command-palette";
-import { navGroups, settingsItem, type NavGroup, type NavItem } from "./nav";
+import { flattenItems, navGroups, settingsItem, type NavGroup, type NavItem } from "./nav";
+import {
+  activeTrail,
+  collapsedGroupsStore,
+  pinnedStore,
+  setGroupOpen,
+  splitPinned,
+  togglePinned,
+} from "./nav-state";
 import { useGoToShortcuts } from "./shortcuts";
 import { ShortcutsDialog } from "./shortcuts-dialog";
 
@@ -58,10 +69,15 @@ const activeClasses = [
 function NavLink({
   item,
   count,
+  sub,
+  className,
   onNavigate,
 }: {
   item: NavItem;
   count?: number;
+  /** A sub-page: one level in, no icon, a little smaller. */
+  sub?: boolean;
+  className?: string;
   onNavigate?: () => void;
 }) {
   const Icon = item.icon;
@@ -71,17 +87,110 @@ function NavLink({
       to={item.to as LinkProps["to"]}
       activeOptions={{ exact: item.exact ?? false }}
       onClick={onNavigate}
-      className={cn(itemClasses, activeClasses)}
+      className={cn(itemClasses, activeClasses, sub && "h-7 max-lg:h-9 text-[13px]", className)}
     >
-      <Icon strokeWidth={1.75} />
+      {!sub && <Icon strokeWidth={1.75} />}
       <span className="flex-1 truncate">{item.label}</span>
       {count ? (
-        <span className="num rounded-full bg-warning-subtle px-1.5 text-xs leading-5 font-semibold text-warning">
+        <span
+          className={cn(
+            "num rounded-full bg-warning-subtle px-1.5 text-xs leading-5 font-semibold text-warning",
+            // The pin button takes this spot on hover (desktop).
+            "transition-opacity lg:group-focus-within/pin:opacity-0 lg:group-hover/pin:opacity-0",
+          )}
+        >
           {count}
           <span className="sr-only"> open</span>
         </span>
       ) : null}
     </Link>
+  );
+}
+
+function countFor(item: NavItem, reviewCount?: number) {
+  return item.badge === "reviewQueue" ? reviewCount : undefined;
+}
+
+/**
+ * Animated open/close for a block of menu rows: the height eases between 0 and its content
+ * (grid rows 0fr → 1fr) while the rows fade. Closed rows stay mounted but inert, so they
+ * can't be tabbed to.
+ */
+function Collapse({ open, children }: { open: boolean; children: ReactNode }) {
+  return (
+    <div
+      className={cn(
+        "grid transition-[grid-template-rows,opacity] duration-(--duration-slow) ease-(--ease-out) motion-reduce:transition-none",
+        open ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
+      )}
+    >
+      {/* The side slack keeps the active row's outline from being clipped. */}
+      <div className="-mx-1 min-h-0 overflow-hidden px-1" inert={!open || undefined}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * One menu row: the link, and a pin button that replaces its count while hovered. Sub-pages
+ * sit indented underneath.
+ */
+function NavEntry({
+  item,
+  pinned,
+  sub,
+  reviewCount,
+  onNavigate,
+}: {
+  item: NavItem;
+  pinned?: boolean;
+  sub?: boolean;
+  reviewCount?: number;
+  onNavigate?: () => void;
+}) {
+  const children = item.children ?? [];
+  const PinToggleIcon = pinned ? PinOffIcon : PinIcon;
+  const pinAction = `${pinned ? "Unpin" : "Pin"} ${item.label}`;
+  return (
+    <li>
+      <div className="group/pin relative">
+        <NavLink
+          item={item}
+          sub={sub}
+          onNavigate={onNavigate}
+          count={countFor(item, reviewCount)}
+          className="max-lg:pr-9"
+        />
+        <button
+          type="button"
+          onClick={() => togglePinned(item.to)}
+          title={pinAction}
+          aria-label={pinAction}
+          className={cn(
+            "absolute top-1/2 right-1 grid size-6 -translate-y-1/2 place-content-center rounded-xs",
+            "bg-hover text-faint-foreground hover:bg-pressed hover:text-foreground focus-ring",
+            "opacity-0 transition-opacity max-lg:opacity-100",
+            "lg:group-focus-within/pin:opacity-100 lg:group-hover/pin:opacity-100",
+          )}
+        >
+          <PinToggleIcon className="size-3.5" />
+        </button>
+      </div>
+      {children.length > 0 && (
+        <ul className="mt-px mb-0.5 ml-[18px] grid gap-px border-l border-border pl-1">
+          {children.map((child) => (
+            <NavEntry
+              key={child.to}
+              item={child}
+              sub
+              reviewCount={reviewCount}
+              onNavigate={onNavigate}
+            />
+          ))}
+        </ul>
+      )}
+    </li>
   );
 }
 
@@ -159,6 +268,19 @@ function Sidebar({
   onSearch: () => void;
   onNavigate?: () => void;
 }) {
+  const pins = pinnedStore.use();
+  const collapsedGroups = collapsedGroupsStore.use();
+  const pathname = useRouterState({ select: (state) => state.location.pathname });
+  const { pinned, groups: rest } = useMemo(() => splitPinned(groups, pins), [groups, pins]);
+
+  // Navigating (⌘K, links on pages) into a collapsed group opens it.
+  const trail = activeTrail(rest, pathname);
+  const trailGroup = trail?.group ?? "";
+  useEffect(() => {
+    if (trailGroup && collapsedGroupsStore.get().includes(trailGroup))
+      setGroupOpen(trailGroup, true);
+  }, [trailGroup]);
+
   return (
     <div className="flex h-full flex-col gap-4 bg-canvas px-3 pt-4 pb-3">
       <Link
@@ -189,27 +311,96 @@ function Sidebar({
         <Kbd>⌘K</Kbd>
       </button>
 
-      <nav aria-label="Main" className="-mx-1 flex-1 overflow-y-auto px-1">
-        {groups.map((group, index) => (
-          <div key={group.label ?? index} className={cn(index > 0 && "mt-4")}>
-            {group.label && (
-              <h2 className="mb-1 px-2.5 text-xs font-semibold text-faint-foreground">
-                {group.label}
-              </h2>
-            )}
+      <nav
+        aria-label="Main"
+        className={cn(
+          // The padding keeps the active row's outline from being clipped at the edges.
+          "-mx-1 -my-1 flex-1 overflow-x-hidden overflow-y-auto px-1 py-1",
+          // A thin, quiet scrollbar that only shows its thumb while the menu overflows.
+          "[scrollbar-color:var(--border-strong)_transparent] [scrollbar-width:thin]",
+        )}
+      >
+        {pinned.length > 0 && (
+          <div className="mb-4">
+            <h2 className="mb-1 px-2.5 text-xs font-semibold text-faint-foreground">Pinned</h2>
             <ul className="grid gap-px">
-              {group.items.map((item) => (
-                <li key={item.to}>
-                  <NavLink
-                    item={item}
-                    onNavigate={onNavigate}
-                    count={item.badge === "reviewQueue" ? reviewCount : undefined}
-                  />
-                </li>
+              {pinned.map((item) => (
+                <NavEntry
+                  key={item.to}
+                  item={item}
+                  pinned
+                  reviewCount={reviewCount}
+                  onNavigate={onNavigate}
+                />
               ))}
             </ul>
           </div>
-        ))}
+        )}
+        {rest.map((group, index) => {
+          const label = group.label;
+          const open = !label || !collapsedGroups.includes(label);
+          const waiting = flattenItems(group.items).reduce(
+            (sum, item) => sum + (countFor(item, reviewCount) ?? 0),
+            0,
+          );
+          return (
+            <div key={label ?? index} className={cn(index > 0 && "mt-2")}>
+              {label && (
+                <button
+                  type="button"
+                  aria-expanded={open}
+                  onClick={() => setGroupOpen(label, !open)}
+                  className={cn(
+                    "mb-px flex h-7 w-full items-center gap-1 rounded-sm px-2.5 text-xs font-semibold text-faint-foreground",
+                    "transition-colors hover:text-foreground focus-ring-inset",
+                  )}
+                >
+                  <span className="flex-1 text-left">{label}</span>
+                  {waiting ? (
+                    <span
+                      className={cn(
+                        "num rounded-full bg-warning-subtle px-1.5 text-xs leading-5 font-semibold text-warning",
+                        "transition-opacity duration-(--duration-base)",
+                        open && "opacity-0",
+                      )}
+                    >
+                      {waiting}
+                      <span className="sr-only"> open</span>
+                    </span>
+                  ) : null}
+                  <ChevronDownIcon
+                    className={cn(
+                      "size-3.5 transition-transform duration-(--duration-slow) ease-(--ease-out) motion-reduce:transition-none",
+                      !open && "-rotate-90",
+                    )}
+                  />
+                </button>
+              )}
+              {label ? (
+                <Collapse open={open}>
+                  <ul className="grid gap-px">
+                    {group.items.map((item) => (
+                      <NavEntry
+                        key={item.to}
+                        item={item}
+                        reviewCount={reviewCount}
+                        onNavigate={onNavigate}
+                      />
+                    ))}
+                  </ul>
+                </Collapse>
+              ) : (
+                <ul className="grid gap-px">
+                  {group.items.map((item) => (
+                    <li key={item.to}>
+                      <NavLink item={item} onNavigate={onNavigate} />
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          );
+        })}
       </nav>
 
       <div className="grid gap-px">
@@ -259,7 +450,7 @@ export function AppShell({
   useHotkey("?", () => setShortcutsOpen(true));
 
   const navItems = useMemo(() => {
-    const items = [...groups.flatMap((group) => group.items), settingsItem];
+    const items = [...flattenItems(groups.flatMap((group) => group.items)), settingsItem];
     if (showDesign) items.push(designItem);
     return items;
   }, [groups, showDesign]);

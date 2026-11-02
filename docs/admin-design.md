@@ -16,6 +16,8 @@ Rules for the internal admin (`apps/admin/`; code paths below are relative to it
 
 ## Information architecture
 
+The sidebar groups are collapsible, all open by default (state kept per browser; the group of the current page opens itself), and users can pin items to a "Pinned" list at the top with the pin button that appears on hover. Less-used pages are sub-pages of the page they belong to (`subPages` in `components/layout/nav.ts`), always shown indented under it. Logic in `components/layout/nav-state.ts`.
+
 ```
 Home                       what needs attention today, then this month's numbers, recent imports
 Donors

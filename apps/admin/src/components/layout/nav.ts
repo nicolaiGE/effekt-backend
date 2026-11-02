@@ -59,6 +59,8 @@ export type NavItem = {
   keywords?: string[];
   /** The second key of its go-to shortcut: g then this key. */
   goKey?: string;
+  /** Sub-pages shown indented under this item, collapsed until the item is expanded. */
+  children?: NavItem[];
 };
 export type NavGroup = { label?: string; items: NavItem[] };
 
@@ -327,9 +329,50 @@ const allNavGroups: NavGroup[] = [
   },
 ];
 
-export const navGroups = allNavGroups.filter(
-  (group) => group.label !== "Regranting" || config.features.regranting,
+/**
+ * Less-used pages sit one level under the page they belong to (parent → its sub-pages).
+ * Keyed by path; every sub-page must be in the same group as its parent.
+ */
+const subPages: Record<string, string[]> = {
+  "/import": ["/import/review"],
+  "/agreements": [
+    "/agreements/cancelled",
+    "/agreements/inflation",
+    "/charges",
+    "/avtalegiro-charges",
+    "/avtalegiro-check",
+  ],
+  "/regranting/rounds": ["/regranting/check"],
+  "/regranting/onward": ["/regranting/onward-reports"],
+  "/impact/grants": ["/impact/agf", "/impact/agf-summary"],
+  "/impact/settings": ["/impact/exchange-rates", "/impact/changes"],
+  "/analysis": ["/analysis/pledges"],
+};
+
+function nest(groups: NavGroup[]): NavGroup[] {
+  const childPaths = new Set(Object.values(subPages).flat());
+  return groups.map((group) => {
+    const byTo = new Map(group.items.map((item) => [item.to, item]));
+    return {
+      ...group,
+      items: group.items
+        .filter((item) => !childPaths.has(item.to))
+        .map((item) => {
+          const children = (subPages[item.to] ?? []).flatMap((to) => byTo.get(to) ?? []);
+          return children.length > 0 ? { ...item, children } : item;
+        }),
+    };
+  });
+}
+
+export const navGroups = nest(
+  allNavGroups.filter((group) => group.label !== "Regranting" || config.features.regranting),
 );
+
+/** Every item including sub-pages, in menu order (for shortcuts and the palette). */
+export function flattenItems(items: NavItem[]): NavItem[] {
+  return items.flatMap((item) => [item, ...flattenItems(item.children ?? [])]);
+}
 
 export const settingsItem: NavItem = {
   to: "/settings",

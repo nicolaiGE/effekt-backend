@@ -28,7 +28,7 @@ test("the Impact group follows Regranting in the nav", async ({ page }) => {
     "Charities & interventions",
     "Exchange rates",
   ])
-    await expect(nav.getByRole("link", { name })).toBeVisible();
+    await expect(nav.getByRole("link", { name, exact: true })).toBeVisible();
   const text = await nav.innerText();
   expect(text.indexOf("Impact")).toBeGreaterThan(text.indexOf("Payees & funds"));
   expect(text.indexOf("Impact")).toBeLessThan(text.indexOf("Analysis"));
