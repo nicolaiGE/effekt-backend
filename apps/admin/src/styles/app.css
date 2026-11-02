@@ -98,6 +98,9 @@
   --text-2xl--line-height: 2rem;
   --text-3xl: 2rem;
   --text-3xl--line-height: 2.5rem;
+  /* One headline figure per page (the Analysis ticker): grows with the screen, 40–64px. */
+  --text-display: clamp(2.5rem, 5vw, 4rem);
+  --text-display--line-height: 1.1;
 
   --radius-none: 0px;
   --radius-xs: 2px;
