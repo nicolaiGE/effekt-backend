@@ -74,7 +74,7 @@ export const LinkComponent: React.FC<{
   );
 };
 
-const isAbsoluteUrl = (href: string) => /^[a-z][a-z0-9+.-]*:/i.test(href);
+export const isAbsoluteUrl = (href: string) => /^[a-z][a-z0-9+.-]*:/i.test(href);
 
 export const getHref = (
   link: NavLink | LinkType,

@@ -1,0 +1,26 @@
+// Same width as a paragraph, so the button never grows wider than the text around it
+.wrapper {
+  width: 100%;
+  max-width: 760px;
+  margin-bottom: 50px;
+}
+
+.button {
+  min-width: 100px;
+  max-width: 100%;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+@media only screen and (max-width: 1520px) and (min-width: 1181px) {
+  .wrapper {
+    max-width: 640px;
+  }
+}
+
+// On phones the button fills the section, which already has the 5vw side padding
+@media only screen and (max-width: 1180px) {
+  .button {
+    width: 100%;
+  }
+}

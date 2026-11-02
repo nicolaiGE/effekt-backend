@@ -30,6 +30,7 @@ import { OrganizationsList } from "./OrganizationsList/OrganizationsList";
 import { SplitViewHtml } from "./SplitViewHtml/SplitViewHtml";
 import { GiftCard } from "./GiftCard/GiftCard";
 import { GiftCards } from "./GiftCards/GiftCards";
+import { StandaloneButton } from "./StandaloneButton/StandaloneButton";
 import { BlockTables } from "./BlockTable/BlockTables";
 import { WealthCalculatorPeriodAdjustment } from "../../shared/components/Graphs/Area/AreaGraph";
 import { Accordion } from "./Accordion/Accordion";
@@ -126,6 +127,8 @@ export const SectionBlockContentRenderer: React.FC<{ blocks: any }> = ({ blocks 
                 <Links links={block.links}></Links>
               </div>
             );
+          case "standalonebutton":
+            return <StandaloneButton key={block._key || block._id} links={block.links} />;
           case "contactinfo":
             return (
               <ContactInfo

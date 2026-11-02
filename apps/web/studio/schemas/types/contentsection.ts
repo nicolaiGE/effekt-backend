@@ -58,6 +58,7 @@ export default defineType({
         { type: "splitviewhtml" },
         { type: "columns" },
         { type: "links" },
+        { type: "standalonebutton" },
         { type: "introsection" },
         { type: "fullimage" },
         { type: "normalimage" },

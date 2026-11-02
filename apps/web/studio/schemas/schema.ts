@@ -55,6 +55,7 @@ import splitviewhtml from "./types/splitviewhtml";
 import category from "./types/category";
 import giftcardteaser from "./types/giftcardteaser";
 import giftcards from "./types/giftcards";
+import standalonebutton from "./types/standalonebutton";
 import giftcarditem from "./types/giftcarditem";
 import avtalegiro from "./types/paymentmethods/avtalegiro";
 import agreementlistconfiguration from "./types/lists/agreements/agreementlistconfiguration";
@@ -168,6 +169,7 @@ export const types = [
   taxstatements,
   giftcardteaser,
   giftcards,
+  standalonebutton,
   giftcarditem,
   dateselectorconfig,
   discountratecomparison,
