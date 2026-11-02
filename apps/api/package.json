@@ -80,7 +80,7 @@
     "@types/qs": "6.15.1",
     "@types/request-promise-native": "^1.0.17",
     "@types/sinon": "^22.0.0",
-    "@types/supertest": "^2.0.12",
+    "@types/supertest": "^7.2.1",
     "@types/ws": "^8.18.2",
     "@vitest/coverage-v8": "catalog:",
     "chai": "^4.3.7",
@@ -91,7 +91,7 @@
     "oxlint": "catalog:",
     "sinon": "^22.1.0",
     "ssh2": "1.17.0",
-    "supertest": "^6.1.6",
+    "supertest": "^7.3.1",
     "typescript": "catalog:",
     "vitest": "catalog:"
   }
