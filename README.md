@@ -75,24 +75,25 @@ check every package; `pnpm api:test`, `pnpm web:test` and `pnpm admin:test` chec
 
 Everything lives in [`docs/`](docs).
 
-| Doc                                                       | About                                                |
-| --------------------------------------------------------- | ---------------------------------------------------- |
-| [website.md](docs/website.md)                             | The website: running it, structure, Sanity Studio    |
-| [web-trpc.md](docs/web-trpc.md)                           | tRPC on the website and the Danish REST adapter      |
-| [admin-building.md](docs/admin-building.md)               | Building admin pages: what to read, rules, testing   |
-| [admin-design.md](docs/admin-design.md)                   | The admin's design system                            |
-| [admin-features.md](docs/admin-features.md)               | What the admin must let people do                    |
-| [preview-environments.md](docs/preview-environments.md)   | Per-PR preview environments                          |
-| [e2e.md](docs/e2e.md)                                     | Website end-to-end tests                             |
-| [deploy.md](docs/deploy.md)                               | Cloud Build deploys and the newest-commit guard      |
-| [regranting.md](docs/regranting.md)                       | The regranting system                                |
-| [regranting-downstream.md](docs/regranting-downstream.md) | Downstream regrants                                  |
-| [timestamps.md](docs/timestamps.md)                       | Timestamps and the database clock                    |
-| [functions.md](docs/functions.md)                         | The Cloud Functions                                  |
-| [pseudo-db.md](docs/pseudo-db.md)                         | Pseudonymised production views for Claude and MCP    |
-| [tooling.md](docs/tooling.md)                             | Scripts, versions and tools across the workspace     |
-| [dependencies.md](docs/dependencies.md)                   | Dependency updates, auto-merge and release-age rules |
-| [API routers](apps/api/src/trpc/routers)                  | The API's tRPC routers (the API's reference)         |
+| Doc                                                       | About                                                      |
+| --------------------------------------------------------- | ---------------------------------------------------------- |
+| [website.md](docs/website.md)                             | The website: running it, structure, Sanity Studio          |
+| [web-trpc.md](docs/web-trpc.md)                           | tRPC on the website and the Danish REST adapter            |
+| [admin-building.md](docs/admin-building.md)               | Building admin pages: what to read, rules, testing         |
+| [admin-design.md](docs/admin-design.md)                   | The admin's design system                                  |
+| [admin-features.md](docs/admin-features.md)               | What the admin must let people do                          |
+| [preview-environments.md](docs/preview-environments.md)   | Per-PR preview environments                                |
+| [e2e.md](docs/e2e.md)                                     | Website end-to-end tests                                   |
+| [deploy.md](docs/deploy.md)                               | Cloud Build deploys and the newest-commit guard            |
+| [regranting.md](docs/regranting.md)                       | The regranting system                                      |
+| [regranting-downstream.md](docs/regranting-downstream.md) | Downstream regrants                                        |
+| [timestamps.md](docs/timestamps.md)                       | Timestamps and the database clock                          |
+| [functions.md](docs/functions.md)                         | The Cloud Functions                                        |
+| [pseudo-db.md](docs/pseudo-db.md)                         | Pseudonymised production views for Claude and MCP          |
+| [claude-cloud.md](docs/claude-cloud.md)                   | Claude Code on the web / Claude Tag: the cloud environment |
+| [tooling.md](docs/tooling.md)                             | Scripts, versions and tools across the workspace           |
+| [dependencies.md](docs/dependencies.md)                   | Dependency updates, auto-merge and release-age rules       |
+| [API routers](apps/api/src/trpc/routers)                  | The API's tRPC routers (the API's reference)               |
 
 Plans and records of finished work: [overhaul-plan.md](docs/overhaul-plan.md) (the admin and tRPC
 overhaul), [admin-deployment.md](docs/admin-deployment.md) (rolling out the new admin) and
