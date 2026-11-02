@@ -15,12 +15,13 @@ affect local Claude Code sessions. [CLAUDE.md](../CLAUDE.md) tells Claude how to
 
 ## The environment (Owner, once)
 
-claude.ai → **Admin settings → Cloud environments → Anthropic-hosted → Create**:
+claude.ai → **Admin settings → Cloud environments** (claude.ai/admin-settings/cloud-environments)
+→ **Anthropic-hosted environments → Create**. Environments created here belong to the
+organization; the form has no sharing setting.
 
 - **Name:** `effekt-platform`
-- **Who can use it:** the organization. Claude Tag can only use organization-shared environments.
-- **Network access:** **Custom**, with **Also include default list of common package managers**
-  checked (npm, GitHub, Docker Hub, ghcr.io and so on), plus:
+- **Network access:** **Limited**, with **Allow package managers** checked (npm, GitHub, Docker
+  Hub, ghcr.io and so on), and these allowed domains:
 
   ```
   nodejs.org
@@ -40,7 +41,12 @@ claude.ai → **Admin settings → Cloud environments → Anthropic-hosted → C
 - **Setup script:** the contents of [`scripts/cloud/setup.sh`](../scripts/cloud/setup.sh).
   Paste it again whenever that file changes; a change also rebuilds the cache.
 
-Optionally make it the organization default under Admin settings → Claude Code.
+On the same page, **Set a default** makes it the environment Claude Code sessions start with,
+and **Set for Claude Tag** makes Claude Tag use it. Without that, Claude Tag uses a basic
+environment with no setup script.
+
+Created 2026-11-02: `effekt-platform`, Healthy, Limited (7 domains, package managers on), no
+environment variables.
 
 ## Trying it
 
