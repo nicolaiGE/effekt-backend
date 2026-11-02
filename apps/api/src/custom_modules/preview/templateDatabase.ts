@@ -37,13 +37,21 @@ const hasSeedMeta = async (conn: mysql.Connection) => {
 
 type Row = mysql.RowDataPacket;
 
-/** Names of the migrations in a Prisma migrations folder. */
-export const localMigrations = (dir: string): Set<string> =>
-  new Set(
-    readdirSync(dir, { withFileTypes: true })
-      .filter((d) => d.isDirectory() && existsSync(join(dir, d.name, "migration.sql")))
-      .map((d) => d.name),
-  );
+/**
+ * Names of the migrations in a Prisma migrations folder. `dir` is the fixed MIGRATIONS_DIR of the
+ * preview image (databaseCli.ts) or a test's temporary folder; never request input.
+ */
+export const localMigrations = (dir: string): Set<string> => {
+  // nosemgrep: javascript.lang.security.audit.detect-non-literal-fs-filename.detect-non-literal-fs-filename -- fixed migrations folder, see above
+  const entries = readdirSync(dir, { withFileTypes: true });
+  const isMigration = (name: string) => {
+    // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal -- name comes from readdirSync of that folder
+    const file = join(dir, name, "migration.sql");
+    // nosemgrep: javascript.lang.security.audit.detect-non-literal-fs-filename.detect-non-literal-fs-filename -- a file inside the fixed migrations folder
+    return existsSync(file);
+  };
+  return new Set(entries.filter((d) => d.isDirectory() && isMigration(d.name)).map((d) => d.name));
+};
 
 /** Whether a template with these applied migrations can be brought up to the local ones. */
 export const migrationsFit = (applied: string[], local: Set<string>, exact = false) =>
@@ -159,6 +167,7 @@ export const cloneDatabase = async (conn: mysql.Connection, from: string, to: st
   if (!ident.test(String(charset?.cs)) || !ident.test(String(charset?.co))) {
     throw new Error(`Unexpected character set of ${from}`);
   }
+  // nosemgrep: javascript.lang.security.audit.sqli.node-mysql-sqli.node-mysql-sqli -- character set and collation from information_schema, checked against /^[a-z0-9_]+$/ above
   await conn.query(`CREATE DATABASE ?? CHARACTER SET ${charset.cs} COLLATE ${charset.co}`, [to]);
   await conn.query("USE ??", [to]);
   const originalMode = (await conn.query<Row[]>("SELECT @@SESSION.sql_mode AS m"))[0][0].m;
@@ -170,6 +179,7 @@ export const cloneDatabase = async (conn: mysql.Connection, from: string, to: st
   let rowsCopied = 0;
   for (const { name } of tables) {
     const [[def]] = await conn.query<Row[]>("SHOW CREATE TABLE ??.??", [from, name]);
+    // nosemgrep: javascript.lang.security.audit.sqli.node-mysql-sqli.node-mysql-sqli -- the template's own CREATE TABLE (SHOW CREATE TABLE), re-run in the copy by design
     await conn.query(retarget(String(def["Create Table"]), from, to));
   }
   // Every column except generated ones (VIRTUAL/STORED), which MySQL computes itself. Not
@@ -190,6 +200,7 @@ export const cloneDatabase = async (conn: mysql.Connection, from: string, to: st
 
   const create = async (sql: string, mode: string) => {
     await conn.query("SET SESSION sql_mode = ?", [mode]);
+    // nosemgrep: javascript.lang.security.audit.sqli.node-mysql-sqli.node-mysql-sqli -- the template's own routine/view/trigger definition (SHOW CREATE …), re-run in the copy by design
     await conn.query(retarget(sql, from, to));
   };
 
@@ -199,7 +210,10 @@ export const cloneDatabase = async (conn: mysql.Connection, from: string, to: st
   );
   for (const { name, type } of routines) {
     const kind = type === "FUNCTION" ? "FUNCTION" : "PROCEDURE";
-    const [[def]] = await conn.query<Row[]>(`SHOW CREATE ${kind} ??.??`, [from, name]);
+    const [[def]] = await conn.query<Row[]>(
+      kind === "FUNCTION" ? "SHOW CREATE FUNCTION ??.??" : "SHOW CREATE PROCEDURE ??.??",
+      [from, name],
+    );
     const sql = def[kind === "FUNCTION" ? "Create Function" : "Create Procedure"];
     if (!sql) throw new Error(`Can't read the definition of ${kind} ${name}`);
     await create(String(sql), String(def.sql_mode));
