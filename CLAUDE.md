@@ -46,8 +46,14 @@ Node 24 on PATH (`node -v`), not /opt/node22. For the website's full-stack e2e u
   dev dataset, never production.
 - Verify your change in the running stack (and the browser where there is UI) and run the
   affected package's tests before opening a PR. Add tests for new behaviour.
-- One pull request per request, against `main`, with a clear title. Add the `preview` label so
-  the API and admin get a preview environment; the website gets a Vercel preview automatically.
+- **Always finish a code change with a pull request.** You don't need to be asked: the people
+  making requests here can't try a change any other way. Push the branch, open one PR per
+  request against `main` with a clear title, and add the `preview` label, so the API and admin
+  get a preview environment (the website gets a Vercel preview automatically). Open it as a draft
+  if you have open questions. Then wait for the preview link in the PR comment and include it
+  in your reply.
+- If pushing fails (e.g. 403), say so plainly, keep the work committed, and tell the person to
+  ask Håkon (GitHub admin) to give the Claude GitHub App access to this repository.
 
 ## Working with non-technical colleagues
 
