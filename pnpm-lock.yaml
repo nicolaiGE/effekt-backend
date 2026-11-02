@@ -464,8 +464,8 @@ importers:
         specifier: 0.1.2
         version: 0.1.2
       express-rate-limit:
-        specifier: ^7.1.5
-        version: 7.5.0(express@5.3.0(supports-color@5.5.0))
+        specifier: ^8.7.1
+        version: 8.7.1(express@5.3.0(supports-color@5.5.0))(supports-color@5.5.0)
       honeypot:
         specifier: 0.0.2
         version: 0.0.2
@@ -7678,11 +7678,11 @@ packages:
   express-prettify@0.1.2:
     resolution: {integrity: sha512-3dK014wFtO0nLgrtSNMz8j2r7dgBaNBPksyMnPtr2DOHm+yxKoFLWxASJk6ctSS4V0H6LkmdhExE9AOVr0lozA==}
 
-  express-rate-limit@7.5.0:
-    resolution: {integrity: sha512-eB5zbQh5h+VenMPM3fh+nw1YExi5nMr6HUCR62ELSP11huvxm/Uir1H1QEyTkk5QX6A58pX6NmaTMceKZ0Eodg==}
+  express-rate-limit@8.7.1:
+    resolution: {integrity: sha512-2FXbqkygil3mZiXzEtM0IjE/UBmBNot0J1GEVrJT4JbrvwOSoEtqtO+wHbiMQELWe1eNvHoYRg2dkjOid+6JkA==}
     engines: {node: '>= 16'}
     peerDependencies:
-      express: ^4.11 || 5 || ^5.0.0-beta.1
+      express: '>= 4.11'
 
   express@5.3.0:
     resolution: {integrity: sha512-qCqy1xSoaugxOD4IVHb1ZWdkvCF2W3aE2okKouWj8VwJ+ztskSiXoBnCSJqfKT+cVPJhuJqe9YLbY425+Zh00g==}
@@ -19257,9 +19257,13 @@ snapshots:
 
   express-prettify@0.1.2: {}
 
-  express-rate-limit@7.5.0(express@5.3.0(supports-color@5.5.0)):
+  express-rate-limit@8.7.1(express@5.3.0(supports-color@5.5.0))(supports-color@5.5.0):
     dependencies:
+      debug: 4.4.3(supports-color@5.5.0)
       express: 5.3.0(supports-color@5.5.0)
+      ip-address: 10.7.5
+    transitivePeerDependencies:
+      - supports-color
 
   express@5.3.0(supports-color@5.5.0):
     dependencies:
