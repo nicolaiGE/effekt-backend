@@ -309,7 +309,7 @@ model Donations {
   sum_confirmed                  Decimal                         @db.Decimal(16, 2) /// Donert sum bekreftet fra betalingstjeneste (NOK)
   timestamp_confirmed            DateTime                        @default(now()) @db.Timestamp(0) /// Timestamp/dato når donasjon er bekreftet fra betalingstjeneste
   transaction_cost               Decimal?                        @db.Decimal(16, 2) /// beregnet transaction cost basert på Payment_ID (oppslag på kostnad) og sum confirmed
-  KID_fordeling                  String                          @db.VarChar(32) /// Same as KID. Used to join to Combining_table for distribution percentages (registrert KID fra betalingstjeneste, oppslag i donations_distribution for Donor_ID)
+  KID_fordeling                  String                          @db.VarChar(32) /// Same as KID: joins Distributions.KID (registrert KID fra betalingstjeneste)
   inserted                       DateTime?                       @default(now()) @db.Timestamp(0)
   last_updated                   DateTime?                       @default(now()) @db.Timestamp(0)
   Meta_owner_ID                  Int                             @default(3)
