@@ -75,6 +75,10 @@ export default defineType({
                     title: "Created by",
                     value: "createdBy",
                   },
+                  {
+                    title: "Last payment",
+                    value: "lastPayment",
+                  },
                 ],
               },
             }),
@@ -98,6 +102,10 @@ export default defineType({
                   {
                     title: "Payment method",
                     value: "paymentmethod",
+                  },
+                  {
+                    title: "Last payment date",
+                    value: "lastpayment",
                   },
                 ],
               },
@@ -123,6 +131,13 @@ export default defineType({
               description:
                 "When this agreement’s distribution is the membership fee (Giv Effektivts medlemskab), use this template instead of the default monthly one. Use {{date}} for the day number, e.g. 'Den {{date}}. hvert år'.",
               hidden: ({ parent }) => parent?.type !== "date",
+            }),
+            defineField({
+              name: "last_payment_empty_text",
+              title: "Text when there is no payment yet",
+              type: "string",
+              description: "E.g. 'None yet'. Leave empty to show nothing.",
+              hidden: ({ parent }) => parent?.type !== "lastpayment",
             }),
             defineField({
               name: "width",

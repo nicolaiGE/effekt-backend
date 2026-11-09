@@ -9,6 +9,7 @@ import {
   useAgreementsDistributions,
   useAvtalegiroAgreements,
   useDKAgreements,
+  useDonations,
   useTaxUnits,
   useVippsAgreements,
 } from "../../_queries";
@@ -16,6 +17,7 @@ import { useMemo, useState } from "react";
 import { InfoBox } from "../../components/shared/components/Infobox/Infobox";
 import { ErrorMessage } from "../../components/profile/shared/ErrorMessage/ErrorMessage";
 import { distributionsByKid } from "../../components/profile/shared/distributionsByKid";
+import { lastPaymentByKid } from "../../components/profile/shared/lists/agreementList/lastPayment";
 import { Clock } from "react-feather";
 import AgreementsMenu, {
   AgreementsMenuOptions,
@@ -94,6 +96,25 @@ export const AgreementsPage = withStaticProps(
   );
 });
 
+/**
+ * The newest donation per KID, for the "last payment" column. The donations are only fetched when
+ * a list has that column. The page does not wait for them: the column stays empty until they arrive
+ */
+const useLastPayments = (page: AgreementsPageData | undefined) => {
+  const { getAccessTokenSilently, user } = useAuth0();
+  const showsLastPayment = [
+    page?.active_list_configuration,
+    page?.inactive_list_configuration,
+  ].some((list) =>
+    list?.columns?.some((column: { type?: string }) => column.type === "lastpayment"),
+  );
+  const { data: donations } = useDonations(user, getAccessTokenSilently, showsLastPayment);
+  return useMemo(
+    () => (Array.isArray(donations) ? lastPaymentByKid(donations) : undefined),
+    [donations],
+  );
+};
+
 // DK-specific agreements page content
 const DKAgreementsPageContent: React.FC<{
   navbarData: any;
@@ -143,6 +164,8 @@ const DKAgreementsPageContent: React.FC<{
   // Errors are not retried (see the profile layout's SWRConfig), so a failed query would otherwise
   // leave the spinner up for good
   const loadFailed = !!(dkAgreementsError || taxUnitsError);
+
+  const lastPayments = useLastPayments(page);
 
   if (!cookieBannerConfig) return null;
 
@@ -265,6 +288,7 @@ const DKAgreementsPageContent: React.FC<{
             <DKAgreementList
               agreements={activeAgreements}
               distributions={distributionsMap}
+              lastPayments={lastPayments}
               taxUnits={taxUnits}
               expandable={true}
               configuration={page?.active_list_configuration}
@@ -276,6 +300,7 @@ const DKAgreementsPageContent: React.FC<{
             <DKAgreementList
               agreements={inactiveAgreements}
               distributions={distributionsMap}
+              lastPayments={lastPayments}
               taxUnits={taxUnits}
               expandable={false}
               configuration={page?.inactive_list_configuration}
@@ -340,6 +365,7 @@ const NordicAgreementsPageContent: React.FC<{
     data: taxUnits,
     error: taxUnitsError,
   } = useTaxUnits(user, getAccessTokenSilently);
+  const lastPayments = useLastPayments(page);
   const vippsLoaded = Array.isArray(vipps);
   const avtaleGiroLoaded = Array.isArray(avtaleGiro);
   const taxUnitsLoaded = Array.isArray(taxUnits);
@@ -504,6 +530,7 @@ const NordicAgreementsPageContent: React.FC<{
               vipps={activeVippsAgreements}
               avtalegiro={activeAvtalegiroAgreements}
               distributions={distributionsMap}
+              lastPayments={lastPayments}
               taxUnits={taxUnits}
               expandable={true}
               configuration={page?.active_list_configuration}
@@ -517,6 +544,7 @@ const NordicAgreementsPageContent: React.FC<{
                 (agreement: AvtaleGiroAgreement) => agreement.cancelled !== null,
               )}
               distributions={distributionsMap}
+              lastPayments={lastPayments}
               taxUnits={taxUnits}
               expandable={false}
               configuration={page?.inactive_list_configuration}

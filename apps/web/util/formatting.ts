@@ -19,6 +19,13 @@ export const onlyDate = (date: string) => {
   return `${pad2(d.getDate())}.${pad2(d.getMonth() + 1)}`;
 };
 
+/** Formats an ISO date as "dd.MM.yyyy" in local time */
+export const dateNumeric = (isoDate: string) => {
+  const d = parseISOLocal(isoDate);
+  if (isNaN(d.getTime())) return INVALID_DATE;
+  return `${pad2(d.getDate())}.${pad2(d.getMonth() + 1)}.${d.getFullYear()}`;
+};
+
 /** Formats an ISO date as "dd.MM.yyyy HH:mm" in local time */
 export const dateTimeNumeric = (isoDate: string) => {
   const d = parseISOLocal(isoDate);

@@ -9,6 +9,7 @@ import { StoppedAgreementFeedback } from "../../../agreements/StoppedAgreementFe
 import { Lightbox } from "../../../../shared/components/Lightbox/Lightbox";
 import { thousandize } from "../../../../../util/formatting";
 import { toNumber } from "../../../../../util/decimal";
+import { formatLastPayment } from "./lastPayment";
 
 export type AgreementTypes = "Vipps" | "AvtaleGiro";
 
@@ -21,15 +22,18 @@ type AgreementRow = {
   amount: number;
   type: AgreementTypes;
   endpoint: string;
+  /** ISO timestamp of the newest donation on the agreement's KID */
+  lastPayment?: string;
 };
 
 type AgreementListConfigurationColumn = {
   title: string;
   value: keyof AgreementRow;
-  type: "string" | "sum" | "date" | "paymentmethod";
+  type: "string" | "sum" | "date" | "paymentmethod" | "lastpayment";
   width?: string;
   payment_date_format_template?: string;
   payment_date_last_day_of_month_template?: string;
+  last_payment_empty_text?: string;
   hide_on_mobile?: boolean;
 };
 
@@ -45,10 +49,12 @@ export const AgreementList: React.FC<{
   avtalegiro: AvtaleGiroAgreement[];
   vipps: VippsAgreement[];
   distributions: Map<string, Distribution>;
+  /** Newest donation per KID, undefined while the donations load or if they failed */
+  lastPayments?: Map<string, string>;
   taxUnits: TaxUnit[];
   expandable?: boolean;
   configuration: AgreementListConfiguration;
-}> = ({ avtalegiro, vipps, distributions, taxUnits, expandable, configuration }) => {
+}> = ({ avtalegiro, vipps, distributions, lastPayments, taxUnits, expandable, configuration }) => {
   const [agreementCancelled, setAgreementCancelled] = useState<{
     agreementType: AgreementTypes;
     agreementId: string;
@@ -72,6 +78,7 @@ export const AgreementList: React.FC<{
     amount: entry.amount,
     type: "Vipps",
     endpoint: entry.ID.toString(),
+    lastPayment: lastPayments?.get(entry.KID),
   }));
 
   let giroType = avtalegiro.map((entry: AvtaleGiroAgreement): AgreementRow => ({
@@ -82,6 +89,7 @@ export const AgreementList: React.FC<{
     amount: toNumber(entry.amount),
     type: "AvtaleGiro",
     endpoint: entry.KID,
+    lastPayment: lastPayments?.get(entry.KID),
   }));
 
   let rowData: AgreementRow[] = [...vippsType, ...giroType];
@@ -93,7 +101,7 @@ export const AgreementList: React.FC<{
     id: agreement.ID.toString(),
     defaultExpanded: false,
     cells: columns.map((column) => ({
-      value: formatColumnValue(column, agreement[column.value]),
+      value: formatColumnValue(column, agreement[column.value], lastPayments !== undefined),
     })),
     details: distributions.has(agreement.KID) ? (
       <AgreementDetails
@@ -166,7 +174,11 @@ export const AgreementList: React.FC<{
   );
 };
 
-const formatColumnValue = (column: AgreementListConfigurationColumn, value: any) => {
+const formatColumnValue = (
+  column: AgreementListConfigurationColumn,
+  value: any,
+  lastPaymentsLoaded: boolean,
+) => {
   switch (column.type) {
     case "string":
       return value;
@@ -178,5 +190,7 @@ const formatColumnValue = (column: AgreementListConfigurationColumn, value: any)
         : column.payment_date_format_template?.replaceAll("{{date}}", value);
     case "paymentmethod":
       return value;
+    case "lastpayment":
+      return formatLastPayment(value, lastPaymentsLoaded, column.last_payment_empty_text);
   }
 };

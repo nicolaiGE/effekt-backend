@@ -137,10 +137,14 @@ export const useAggregatedDonations = (
  * @param {User} user - Which user's data to fetch
  * @param {String} getAccessTokenSilently - Retrieves access token
  * */
-export const useDonations = (user: User | undefined, fetchToken: getAccessTokenSilently) => {
+export const useDonations = (
+  user: User | undefined,
+  fetchToken: getAccessTokenSilently,
+  enabled = true,
+) => {
   const trpc = useTrpcClient(fetchToken);
   const { data, error, isValidating } = useSWR(
-    user ? minsideKeys.donations(getUserId(user)) : null,
+    user && enabled ? minsideKeys.donations(getUserId(user)) : null,
     ([, donorId]) => trpcFetch(() => trpc.minside.donations.query({ donorId })),
   );
 

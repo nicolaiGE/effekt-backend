@@ -8,6 +8,7 @@ import { useMainLocale } from "../../../../../context/MainLocaleContext";
 import { AgreementDetailsConfiguration } from "./AgreementDetails";
 import { DKAgreementDetails } from "./DKAgreementDetails";
 import { distributionTargetsMembershipFee } from "./dkMembershipDisplay";
+import { formatLastPayment } from "./lastPayment";
 import { CauseAreaContext } from "../../../../shared/components/Widget/types/WidgetProps";
 
 const PAYMENT_METHOD_LABELS: Record<DKPaymentMethod, string> = {
@@ -23,15 +24,18 @@ type DKAgreementRow = {
   date: number;
   amount: number;
   type: DKPaymentMethod;
+  /** ISO timestamp of the newest donation on the agreement's KID */
+  lastPayment?: string;
 };
 type DKAgreementListConfigurationColumn = {
   title: string;
   value: keyof DKAgreementRow;
-  type: "string" | "sum" | "date" | "paymentmethod";
+  type: "string" | "sum" | "date" | "paymentmethod" | "lastpayment";
   width?: string;
   payment_date_format_template?: string;
   payment_date_last_day_of_month_template?: string;
   payment_date_membership_format_template?: string;
+  last_payment_empty_text?: string;
   hide_on_mobile?: boolean;
 };
 
@@ -46,11 +50,21 @@ type DKAgreementListConfiguration = {
 export const DKAgreementList: React.FC<{
   agreements: DKAgreement[];
   distributions?: Map<string, Distribution>;
+  /** Newest donation per KID, undefined while the donations load or if they failed */
+  lastPayments?: Map<string, string>;
   taxUnits?: TaxUnit[];
   expandable?: boolean;
   configuration: DKAgreementListConfiguration;
   causeAreaContexts: CauseAreaContext[];
-}> = ({ agreements, distributions, taxUnits, expandable, configuration, causeAreaContexts }) => {
+}> = ({
+  agreements,
+  distributions,
+  lastPayments,
+  taxUnits,
+  expandable,
+  configuration,
+  causeAreaContexts,
+}) => {
   const formattingLocale = getFormattingLocale(useMainLocale());
   const columns = configuration.columns.filter(
     (column) => window && !(window.innerWidth < 1180 && column.hide_on_mobile),
@@ -69,6 +83,7 @@ export const DKAgreementList: React.FC<{
       date: dkAgreement.chargeDay ?? 0,
       amount: dkAgreement.amount,
       type: dkAgreement.method,
+      lastPayment: lastPayments?.get(dkAgreement.kid),
     };
 
     const rowDistribution = distributions?.get(dkAgreement.kid);
@@ -84,6 +99,7 @@ export const DKAgreementList: React.FC<{
           rowDistribution,
           dkAgreement.is_payment_expired,
           formattingLocale,
+          lastPayments !== undefined,
         ),
       })),
       details:
@@ -130,6 +146,7 @@ const formatColumnValue = (
   distribution: Distribution | undefined,
   isPaymentExpired: boolean,
   locale: FormattingLocale,
+  lastPaymentsLoaded: boolean,
 ) => {
   switch (column.type) {
     case "string":
@@ -152,5 +169,7 @@ const formatColumnValue = (
       return template?.replaceAll("{{date}}", String(value));
     case "paymentmethod":
       return PAYMENT_METHOD_LABELS[value as DKPaymentMethod] || value;
+    case "lastpayment":
+      return formatLastPayment(value, lastPaymentsLoaded, column.last_payment_empty_text);
   }
 };

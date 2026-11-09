@@ -1,6 +1,12 @@
 import { describe, expect, test } from "vitest";
 import { DateTime } from "luxon";
-import { dateTimeNumeric, getFormattingLocale, onlyDate, thousandize } from "./formatting";
+import {
+  dateNumeric,
+  dateTimeNumeric,
+  getFormattingLocale,
+  onlyDate,
+  thousandize,
+} from "./formatting";
 
 // These helpers replaced luxon in client code, so check they still match it.
 // Both use the process time zone; run with e.g. TZ=America/Los_Angeles to
@@ -18,6 +24,10 @@ const inputs = [
 describe("date formatting matches luxon", () => {
   test.each(inputs)("onlyDate(%s)", (input) => {
     expect(onlyDate(input)).toBe(DateTime.fromISO(input).toFormat("dd.MM"));
+  });
+
+  test.each(inputs)("dateNumeric(%s)", (input) => {
+    expect(dateNumeric(input)).toBe(DateTime.fromISO(input).toFormat("dd.MM.yyyy"));
   });
 
   test.each(inputs)("dateTimeNumeric(%s)", (input) => {
