@@ -104,6 +104,7 @@ export const SectionBlockContentRenderer: React.FC<{ blocks: any }> = ({ blocks 
                 key={block._key}
                 tocKey={block._key}
                 title={block.title}
+                titleLevel={block.heading_level}
                 blocks={block.content}
               />
             );

@@ -88,9 +88,19 @@ h5 {
   line-height: 46px;
 }
 
-p.inngress {
+p.inngress,
+h2.inngress,
+h3.inngress {
   font-size: 30px;
   line-height: 40px;
+}
+
+/* A paragraph title chosen as h2 or h3 (heading_level) looks like the paragraph it was before */
+h2.inngress,
+h3.inngress {
+  font-family: "ESKlarheitGrotesk", sans-serif;
+  font-weight: 300;
+  margin: 1em 0;
 }
 
 span.detailheader {
@@ -262,7 +272,9 @@ button {
     line-height: 32px;
   }
 
-  p.inngress {
+  p.inngress,
+  h2.inngress,
+  h3.inngress {
     font-size: 22px;
     line-height: 32px;
   }
@@ -311,7 +323,9 @@ button {
     line-height: 140%;
   }
 
-  p.inngress {
+  p.inngress,
+  h2.inngress,
+  h3.inngress {
     font-size: 22px;
     line-height: 150%;
   }
@@ -382,7 +396,9 @@ button {
     line-height: 140%;
   }
 
-  p.inngress {
+  p.inngress,
+  h2.inngress,
+  h3.inngress {
     font-size: 13px;
     line-height: 150%;
   }
