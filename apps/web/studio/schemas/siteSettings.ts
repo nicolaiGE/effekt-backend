@@ -1,4 +1,5 @@
 import { defineType, defineField } from "sanity";
+import { SITE_FEATURES } from "../features";
 
 export default defineType({
   name: "site_settings",
@@ -107,6 +108,15 @@ export default defineType({
       title: "Hide dashboard button",
       type: "boolean",
       description: "Hide the donor dashboard (e.g. Min side) button from the main menu",
+    }),
+    defineField({
+      name: "disabled_features",
+      title: "Turned off features",
+      type: "array",
+      of: [{ type: "string" }],
+      options: { list: [...SITE_FEATURES], layout: "grid" },
+      description:
+        "Features this country's site does not support. They are hidden from the Studio menu. A turned off dashboard also hides its button in the main menu. Reload the Studio after changing this.",
     }),
     defineField({
       title: "Footer columns",

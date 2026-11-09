@@ -17,9 +17,18 @@ import {
   User,
 } from "react-feather";
 import { StructureResolver } from "sanity/structure";
+import { isFeatureOn, SiteFeature } from "./features";
 
-export const deskStructure: StructureResolver = (S) =>
-  S.list()
+export const deskStructure: StructureResolver = async (S, context) => {
+  // Read once when the Studio loads. A failed read keeps every item, as before this setting
+  const disabledFeatures: string[] | null = await context
+    .getClient({ apiVersion: "2024-09-19" })
+    .fetch(`*[_type == "site_settings"][0].disabled_features`)
+    .catch(() => null);
+  const when = <T>(feature: SiteFeature, items: T[]): T[] =>
+    isFeatureOn(disabledFeatures, feature) ? items : [];
+
+  return S.list()
     .title("Site")
     .items([
       S.documentTypeListItem("generic_page").title("All Pages").icon(Book),
@@ -66,82 +75,90 @@ export const deskStructure: StructureResolver = (S) =>
         .icon(File)
         .child(S.document().schemaType("articles").documentId("articles").views([S.view.form()])),
       S.documentTypeListItem("article_page").title("All Articles").icon(Book),
+      ...when("fundraisers", [
+        S.divider(),
+        S.listItem()
+          .title("Fundraisers")
+          .icon(User)
+          .child(
+            S.list()
+              .title("Fundraisers")
+              .items([
+                S.listItem()
+                  .title("All Fundraisers")
+                  .icon(User)
+                  .child(
+                    S.documentList()
+                      .title("Fundraisers")
+                      .schemaType("fundraiser_page")
+                      .apiVersion("v2024-09-19")
+                      .filter('_type == "fundraiser_page"')
+                      .child((id) =>
+                        S.document()
+                          .schemaType("fundraiser_page")
+                          .documentId(id)
+                          .views([S.view.form()]),
+                      ),
+                  ),
+                S.divider(),
+                S.listItem()
+                  .title("Fundraiser Widget Configurations")
+                  .icon(DollarSign)
+                  .child(
+                    S.documentList()
+                      .title("Fundraiser Widget Configurations")
+                      .schemaType("fundraiserwidget")
+                      .apiVersion("v2024-09-19")
+                      .filter('_type == "fundraiserwidget"'),
+                  ),
+              ]),
+          ),
+      ]),
       S.divider(),
-      S.listItem()
-        .title("Fundraisers")
-        .icon(User)
-        .child(
-          S.list()
-            .title("Fundraisers")
-            .items([
-              S.listItem()
-                .title("All Fundraisers")
-                .icon(User)
-                .child(
-                  S.documentList()
-                    .title("Fundraisers")
-                    .schemaType("fundraiser_page")
-                    .apiVersion("v2024-09-19")
-                    .filter('_type == "fundraiser_page"')
-                    .child((id) =>
-                      S.document()
-                        .schemaType("fundraiser_page")
-                        .documentId(id)
-                        .views([S.view.form()]),
-                    ),
-                ),
-              S.divider(),
-              S.listItem()
-                .title("Fundraiser Widget Configurations")
-                .icon(DollarSign)
-                .child(
-                  S.documentList()
-                    .title("Fundraiser Widget Configurations")
-                    .schemaType("fundraiserwidget")
-                    .apiVersion("v2024-09-19")
-                    .filter('_type == "fundraiserwidget"'),
-                ),
-            ]),
-        ),
-      S.divider(),
-      S.listItem()
-        .title("Results")
-        .icon(BarChart)
-        .child(S.document().schemaType("results").documentId("results").views([S.view.form()])),
+      ...when("results", [
+        S.listItem()
+          .title("Results")
+          .icon(BarChart)
+          .child(S.document().schemaType("results").documentId("results").views([S.view.form()])),
+      ]),
       S.documentTypeListItem("organization").title("Organizations").icon(Heart),
-      S.divider(),
-      S.listItem()
-        .title("Dashboard")
-        .icon(Lock)
-        .child(
-          S.list()
-            .title("Dashboard")
-            .items([
-              S.listItem()
-                .title("Settings")
-                .icon(Settings)
-                .child(S.editor().id("settings").schemaType("dashboard").documentId("dashboard")),
-              S.divider(),
-              S.listItem()
-                .title("Donations")
-                .icon(Activity)
-                .child(S.editor().id("donations").schemaType("donations").documentId("donations")),
-              S.listItem()
-                .title("Agreements")
-                .icon(Paperclip)
-                .child(
-                  S.editor().id("agreements").schemaType("agreements").documentId("agreements"),
-                ),
-              S.listItem()
-                .title("Profile")
-                .icon(User)
-                .child(S.editor().id("profile").schemaType("profile").documentId("profile")),
-              S.listItem()
-                .title("Tax")
-                .icon(DollarSign)
-                .child(S.editor().id("tax").schemaType("tax").documentId("tax")),
-            ]),
-        ),
+      ...when("dashboard", [
+        S.divider(),
+        S.listItem()
+          .title("Dashboard")
+          .icon(Lock)
+          .child(
+            S.list()
+              .title("Dashboard")
+              .items([
+                S.listItem()
+                  .title("Settings")
+                  .icon(Settings)
+                  .child(S.editor().id("settings").schemaType("dashboard").documentId("dashboard")),
+                S.divider(),
+                S.listItem()
+                  .title("Donations")
+                  .icon(Activity)
+                  .child(
+                    S.editor().id("donations").schemaType("donations").documentId("donations"),
+                  ),
+                S.listItem()
+                  .title("Agreements")
+                  .icon(Paperclip)
+                  .child(
+                    S.editor().id("agreements").schemaType("agreements").documentId("agreements"),
+                  ),
+                S.listItem()
+                  .title("Profile")
+                  .icon(User)
+                  .child(S.editor().id("profile").schemaType("profile").documentId("profile")),
+                S.listItem()
+                  .title("Tax")
+                  .icon(DollarSign)
+                  .child(S.editor().id("tax").schemaType("tax").documentId("tax")),
+              ]),
+          ),
+      ]),
       S.divider(),
       S.listItem()
         .schemaType("donationwidget")
@@ -202,3 +219,4 @@ export const deskStructure: StructureResolver = (S) =>
         .icon(Settings)
         .child(S.document().schemaType("site_settings").documentId("site_settings")),
     ]);
+};

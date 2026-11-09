@@ -16,6 +16,7 @@ import { token } from "../../../../token";
 import { stegaClean } from "@sanity/client/stega";
 import { CustomLink } from "../CustomLink/CustomLink";
 import { LiveQuery } from "../../LiveQuery";
+import { isFeatureOn } from "../../../../studio/features";
 
 /* .logoWrapper is 250px wide on large screens, .logoWrapperImage 160px below that */
 const LOGO_SIZES = "(min-width: 1521px) 250px, 160px";
@@ -45,6 +46,7 @@ export type NavBarQueryResult = {
     accent_color: string;
     main_currency: string;
     hide_dashboard_button?: boolean;
+    disabled_features?: string[] | null;
   };
   dashboard: {
     main_navigation: MainNavbarItem[];
@@ -84,6 +86,7 @@ const query = groq`
     accent_color,
     main_currency,
     hide_dashboard_button,
+    disabled_features,
     main_navigation[] {
       _type == 'navgroup' => {
         _type,
@@ -140,7 +143,8 @@ export const Navbar = withStaticProps(
 
   const dashboardLogo = data.result.dashboard.dashboard_logo;
 
-  const showDashboardButton = !settingsData.hide_dashboard_button;
+  const showDashboardButton =
+    !settingsData.hide_dashboard_button && isFeatureOn(settingsData.disabled_features, "dashboard");
 
   const labels = {
     dashboard: dashboardData.dashboard_label,
