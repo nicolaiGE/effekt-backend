@@ -66,6 +66,7 @@ export const GenericPage = withStaticProps(
 
   const header = page.header;
   const headerCTA = header as typeof header & {
+    cta_email?: string;
     cta_cause_area_id?: number;
     cta_organization_id?: number;
   };
@@ -103,6 +104,7 @@ export const GenericPage = withStaticProps(
         coverPhoto={header.coverPhoto}
         cta_type={header.cta_type}
         cta_label={header.cta_label}
+        cta_email={headerCTA.cta_email}
         cta_cause_area_id={headerCTA.cta_cause_area_id}
         cta_organization_id={headerCTA.cta_organization_id}
         accent_color={stegaClean(header.accent_color)}

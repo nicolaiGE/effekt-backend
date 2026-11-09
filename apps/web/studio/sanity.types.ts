@@ -3520,7 +3520,8 @@ export type Pageheader = {
     _type: "image";
   };
   cta_label?: string;
-  cta_type?: "open_widget";
+  cta_type?: "open_widget" | "contact";
+  cta_email?: string;
   cta_cause_area_id?: number;
   cta_organization_id?: number;
   layout?: "default" | "centered" | "hero" | "coverPhoto" | "noheader";
@@ -4503,7 +4504,8 @@ export type Vippsagreement = {
       _type: "image";
     };
     cta_label?: string;
-    cta_type?: "open_widget";
+    cta_type?: "open_widget" | "contact";
+    cta_email?: string;
     cta_cause_area_id?: number;
     cta_organization_id?: number;
     layout?: "default" | "centered" | "hero" | "coverPhoto" | "noheader";
@@ -4985,7 +4987,8 @@ export type Results = {
       _type: "image";
     };
     cta_label?: string;
-    cta_type?: "open_widget";
+    cta_type?: "open_widget" | "contact";
+    cta_email?: string;
     cta_cause_area_id?: number;
     cta_organization_id?: number;
     layout?: "default" | "centered" | "hero" | "coverPhoto" | "noheader";
@@ -5110,7 +5113,8 @@ export type Articles = {
       _type: "image";
     };
     cta_label?: string;
-    cta_type?: "open_widget";
+    cta_type?: "open_widget" | "contact";
+    cta_email?: string;
     cta_cause_area_id?: number;
     cta_organization_id?: number;
     layout?: "default" | "centered" | "hero" | "coverPhoto" | "noheader";
@@ -5618,7 +5622,8 @@ export type Criteria = {
       _type: "image";
     };
     cta_label?: string;
-    cta_type?: "open_widget";
+    cta_type?: "open_widget" | "contact";
+    cta_email?: string;
     cta_cause_area_id?: number;
     cta_organization_id?: number;
     layout?: "default" | "centered" | "hero" | "coverPhoto" | "noheader";
@@ -6093,7 +6098,8 @@ export type Support = {
       _type: "image";
     };
     cta_label?: string;
-    cta_type?: "open_widget";
+    cta_type?: "open_widget" | "contact";
+    cta_email?: string;
     cta_cause_area_id?: number;
     cta_organization_id?: number;
     layout?: "default" | "centered" | "hero" | "coverPhoto" | "noheader";
@@ -6177,7 +6183,8 @@ export type Generic_page = {
       _type: "image";
     };
     cta_label?: string;
-    cta_type?: "open_widget";
+    cta_type?: "open_widget" | "contact";
+    cta_email?: string;
     cta_cause_area_id?: number;
     cta_organization_id?: number;
     layout?: "default" | "centered" | "hero" | "coverPhoto" | "noheader";
@@ -10273,7 +10280,8 @@ export type FetchArticlesPageResult = {
         _type: "image";
       };
       cta_label?: string;
-      cta_type?: "open_widget";
+      cta_type?: "contact" | "open_widget";
+      cta_email?: string;
       cta_cause_area_id?: number;
       cta_organization_id?: number;
       layout?: "centered" | "coverPhoto" | "default" | "hero" | "noheader";
@@ -13840,7 +13848,8 @@ export type FetchGenericPageResult = {
         _type: "image";
       };
       cta_label?: string;
-      cta_type?: "open_widget";
+      cta_type?: "contact" | "open_widget";
+      cta_email?: string;
       cta_cause_area_id?: number;
       cta_organization_id?: number;
       layout?: "centered" | "coverPhoto" | "default" | "hero" | "noheader";
@@ -17299,7 +17308,8 @@ export type FetchResultsResult = {
         _type: "image";
       };
       cta_label?: string;
-      cta_type?: "open_widget";
+      cta_type?: "contact" | "open_widget";
+      cta_email?: string;
       cta_cause_area_id?: number;
       cta_organization_id?: number;
       layout?: "centered" | "coverPhoto" | "default" | "hero" | "noheader";
@@ -17484,7 +17494,8 @@ export type FetchVippsResult = {
               _type: "image";
             };
             cta_label?: string;
-            cta_type?: "open_widget";
+            cta_type?: "contact" | "open_widget";
+            cta_email?: string;
             cta_cause_area_id?: number;
             cta_organization_id?: number;
             layout?: "centered" | "coverPhoto" | "default" | "hero" | "noheader";
@@ -18630,7 +18641,8 @@ export type FetchAgreementsPageResult = {
             _type: "image";
           };
           cta_label?: string;
-          cta_type?: "open_widget";
+          cta_type?: "contact" | "open_widget";
+          cta_email?: string;
           cta_cause_area_id?: number;
           cta_organization_id?: number;
           layout?: "centered" | "coverPhoto" | "default" | "hero" | "noheader";
@@ -19366,7 +19378,8 @@ export type FetchAgreementsPageResult = {
             _type: "image";
           };
           cta_label?: string;
-          cta_type?: "open_widget";
+          cta_type?: "contact" | "open_widget";
+          cta_email?: string;
           cta_cause_area_id?: number;
           cta_organization_id?: number;
           layout?: "centered" | "coverPhoto" | "default" | "hero" | "noheader";
@@ -20856,7 +20869,8 @@ export type FetchAgreementsPageResult = {
             _type: "image";
           };
           cta_label?: string;
-          cta_type?: "open_widget";
+          cta_type?: "contact" | "open_widget";
+          cta_email?: string;
           cta_cause_area_id?: number;
           cta_organization_id?: number;
           layout?: "centered" | "coverPhoto" | "default" | "hero" | "noheader";
@@ -21617,7 +21631,8 @@ export type FetchAgreementsPageResult = {
           _type: "image";
         };
         cta_label?: string;
-        cta_type?: "open_widget";
+        cta_type?: "contact" | "open_widget";
+        cta_email?: string;
         cta_cause_area_id?: number;
         cta_organization_id?: number;
         layout?: "centered" | "coverPhoto" | "default" | "hero" | "noheader";
@@ -21856,7 +21871,8 @@ export type FetchAgreementsPageResult = {
             _type: "image";
           };
           cta_label?: string;
-          cta_type?: "open_widget";
+          cta_type?: "contact" | "open_widget";
+          cta_email?: string;
           cta_cause_area_id?: number;
           cta_organization_id?: number;
           layout?: "centered" | "coverPhoto" | "default" | "hero" | "noheader";
@@ -22200,7 +22216,8 @@ export type FetchAgreementsPageResult = {
             _type: "image";
           };
           cta_label?: string;
-          cta_type?: "open_widget";
+          cta_type?: "contact" | "open_widget";
+          cta_email?: string;
           cta_cause_area_id?: number;
           cta_organization_id?: number;
           layout?: "centered" | "coverPhoto" | "default" | "hero" | "noheader";
@@ -22411,7 +22428,8 @@ export type FetchAgreementsPageResult = {
             _type: "image";
           };
           cta_label?: string;
-          cta_type?: "open_widget";
+          cta_type?: "contact" | "open_widget";
+          cta_email?: string;
           cta_cause_area_id?: number;
           cta_organization_id?: number;
           layout?: "centered" | "coverPhoto" | "default" | "hero" | "noheader";
@@ -23474,7 +23492,8 @@ export type FetchDonationsPageResult = {
             _type: "image";
           };
           cta_label?: string;
-          cta_type?: "open_widget";
+          cta_type?: "contact" | "open_widget";
+          cta_email?: string;
           cta_cause_area_id?: number;
           cta_organization_id?: number;
           layout?: "centered" | "coverPhoto" | "default" | "hero" | "noheader";
@@ -24240,7 +24259,8 @@ export type FetchDonationsPageResult = {
             _type: "image";
           };
           cta_label?: string;
-          cta_type?: "open_widget";
+          cta_type?: "contact" | "open_widget";
+          cta_email?: string;
           cta_cause_area_id?: number;
           cta_organization_id?: number;
           layout?: "centered" | "coverPhoto" | "default" | "hero" | "noheader";
@@ -25956,7 +25976,8 @@ export type FetchDonationsPageResult = {
             _type: "image";
           };
           cta_label?: string;
-          cta_type?: "open_widget";
+          cta_type?: "contact" | "open_widget";
+          cta_email?: string;
           cta_cause_area_id?: number;
           cta_organization_id?: number;
           layout?: "centered" | "coverPhoto" | "default" | "hero" | "noheader";
@@ -26747,7 +26768,8 @@ export type FetchDonationsPageResult = {
           _type: "image";
         };
         cta_label?: string;
-        cta_type?: "open_widget";
+        cta_type?: "contact" | "open_widget";
+        cta_email?: string;
         cta_cause_area_id?: number;
         cta_organization_id?: number;
         layout?: "centered" | "coverPhoto" | "default" | "hero" | "noheader";
@@ -27007,7 +27029,8 @@ export type FetchDonationsPageResult = {
             _type: "image";
           };
           cta_label?: string;
-          cta_type?: "open_widget";
+          cta_type?: "contact" | "open_widget";
+          cta_email?: string;
           cta_cause_area_id?: number;
           cta_organization_id?: number;
           layout?: "centered" | "coverPhoto" | "default" | "hero" | "noheader";
@@ -27369,7 +27392,8 @@ export type FetchDonationsPageResult = {
             _type: "image";
           };
           cta_label?: string;
-          cta_type?: "open_widget";
+          cta_type?: "contact" | "open_widget";
+          cta_email?: string;
           cta_cause_area_id?: number;
           cta_organization_id?: number;
           layout?: "centered" | "coverPhoto" | "default" | "hero" | "noheader";
@@ -27601,7 +27625,8 @@ export type FetchDonationsPageResult = {
             _type: "image";
           };
           cta_label?: string;
-          cta_type?: "open_widget";
+          cta_type?: "contact" | "open_widget";
+          cta_email?: string;
           cta_cause_area_id?: number;
           cta_organization_id?: number;
           layout?: "centered" | "coverPhoto" | "default" | "hero" | "noheader";
@@ -28655,7 +28680,8 @@ export type FetchProfilePageResult = {
             _type: "image";
           };
           cta_label?: string;
-          cta_type?: "open_widget";
+          cta_type?: "contact" | "open_widget";
+          cta_email?: string;
           cta_cause_area_id?: number;
           cta_organization_id?: number;
           layout?: "centered" | "coverPhoto" | "default" | "hero" | "noheader";
@@ -29381,7 +29407,8 @@ export type FetchProfilePageResult = {
             _type: "image";
           };
           cta_label?: string;
-          cta_type?: "open_widget";
+          cta_type?: "contact" | "open_widget";
+          cta_email?: string;
           cta_cause_area_id?: number;
           cta_organization_id?: number;
           layout?: "centered" | "coverPhoto" | "default" | "hero" | "noheader";
@@ -30857,7 +30884,8 @@ export type FetchProfilePageResult = {
             _type: "image";
           };
           cta_label?: string;
-          cta_type?: "open_widget";
+          cta_type?: "contact" | "open_widget";
+          cta_email?: string;
           cta_cause_area_id?: number;
           cta_organization_id?: number;
           layout?: "centered" | "coverPhoto" | "default" | "hero" | "noheader";
@@ -31608,7 +31636,8 @@ export type FetchProfilePageResult = {
           _type: "image";
         };
         cta_label?: string;
-        cta_type?: "open_widget";
+        cta_type?: "contact" | "open_widget";
+        cta_email?: string;
         cta_cause_area_id?: number;
         cta_organization_id?: number;
         layout?: "centered" | "coverPhoto" | "default" | "hero" | "noheader";
@@ -31840,7 +31869,8 @@ export type FetchProfilePageResult = {
             _type: "image";
           };
           cta_label?: string;
-          cta_type?: "open_widget";
+          cta_type?: "contact" | "open_widget";
+          cta_email?: string;
           cta_cause_area_id?: number;
           cta_organization_id?: number;
           layout?: "centered" | "coverPhoto" | "default" | "hero" | "noheader";
@@ -32178,7 +32208,8 @@ export type FetchProfilePageResult = {
             _type: "image";
           };
           cta_label?: string;
-          cta_type?: "open_widget";
+          cta_type?: "contact" | "open_widget";
+          cta_email?: string;
           cta_cause_area_id?: number;
           cta_organization_id?: number;
           layout?: "centered" | "coverPhoto" | "default" | "hero" | "noheader";
@@ -32382,7 +32413,8 @@ export type FetchProfilePageResult = {
             _type: "image";
           };
           cta_label?: string;
-          cta_type?: "open_widget";
+          cta_type?: "contact" | "open_widget";
+          cta_email?: string;
           cta_cause_area_id?: number;
           cta_organization_id?: number;
           layout?: "centered" | "coverPhoto" | "default" | "hero" | "noheader";

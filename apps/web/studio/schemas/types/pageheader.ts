@@ -66,10 +66,29 @@ export default defineType({
       type: "string",
       group: "content",
       options: {
-        list: [{ title: "Open widget", value: "open_widget" }],
+        list: [
+          { title: "Open widget", value: "open_widget" },
+          { title: "Contact", value: "contact" },
+        ],
       },
       hidden: ({ parent }: { parent: Pageheader }) =>
         parent ? noTitleTextLayouts.indexOf(parent.layout) !== -1 : false,
+    }),
+    defineField({
+      name: "cta_email",
+      title: "CTA e-mail",
+      description: "The button opens a new e-mail to this address",
+      type: "string",
+      group: "content",
+      hidden: ({ parent }: { parent: Pageheader }) => parent?.cta_type !== "contact",
+      validation: (rule) =>
+        rule
+          .email()
+          .custom((value, context) =>
+            (context.parent as Pageheader)?.cta_type === "contact" && !value
+              ? "Enter the e-mail address the button should open"
+              : true,
+          ),
     }),
     defineField({
       name: "cta_cause_area_id",

@@ -21546,8 +21546,19 @@
             {
               "type": "string",
               "value": "open_widget"
+            },
+            {
+              "type": "string",
+              "value": "contact"
             }
           ]
+        },
+        "optional": true
+      },
+      "cta_email": {
+        "type": "objectAttribute",
+        "value": {
+          "type": "string"
         },
         "optional": true
       },
@@ -27711,8 +27722,19 @@
                   {
                     "type": "string",
                     "value": "open_widget"
+                  },
+                  {
+                    "type": "string",
+                    "value": "contact"
                   }
                 ]
+              },
+              "optional": true
+            },
+            "cta_email": {
+              "type": "objectAttribute",
+              "value": {
+                "type": "string"
               },
               "optional": true
             },
@@ -30746,8 +30768,19 @@
                   {
                     "type": "string",
                     "value": "open_widget"
+                  },
+                  {
+                    "type": "string",
+                    "value": "contact"
                   }
                 ]
+              },
+              "optional": true
+            },
+            "cta_email": {
+              "type": "objectAttribute",
+              "value": {
+                "type": "string"
               },
               "optional": true
             },
@@ -31479,8 +31512,19 @@
                   {
                     "type": "string",
                     "value": "open_widget"
+                  },
+                  {
+                    "type": "string",
+                    "value": "contact"
                   }
                 ]
+              },
+              "optional": true
+            },
+            "cta_email": {
+              "type": "objectAttribute",
+              "value": {
+                "type": "string"
               },
               "optional": true
             },
@@ -34693,8 +34737,19 @@
                   {
                     "type": "string",
                     "value": "open_widget"
+                  },
+                  {
+                    "type": "string",
+                    "value": "contact"
                   }
                 ]
+              },
+              "optional": true
+            },
+            "cta_email": {
+              "type": "objectAttribute",
+              "value": {
+                "type": "string"
               },
               "optional": true
             },
@@ -37698,8 +37753,19 @@
                   {
                     "type": "string",
                     "value": "open_widget"
+                  },
+                  {
+                    "type": "string",
+                    "value": "contact"
                   }
                 ]
+              },
+              "optional": true
+            },
+            "cta_email": {
+              "type": "objectAttribute",
+              "value": {
+                "type": "string"
               },
               "optional": true
             },
@@ -38210,8 +38276,19 @@
                   {
                     "type": "string",
                     "value": "open_widget"
+                  },
+                  {
+                    "type": "string",
+                    "value": "contact"
                   }
                 ]
+              },
+              "optional": true
+            },
+            "cta_email": {
+              "type": "objectAttribute",
+              "value": {
+                "type": "string"
               },
               "optional": true
             },

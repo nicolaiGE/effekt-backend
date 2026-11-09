@@ -5,14 +5,17 @@ import { Links, LinkType } from "../../blocks/Links/Links";
 import type { SanityImageObject } from "@sanity/image-url";
 import { ResponsiveImage } from "../../../shared/responsiveimage";
 import { OpenWidgetButton } from "../../../shared/components/OpenWidgetButton/OpenWidgetButton";
+import buttonStyles from "../../../shared/components/EffektButton/EffektButton.module.scss";
+import { contactHref } from "./contactHref";
 
 export const PageHeader: React.FC<{
   title: string;
   inngress?: string;
   layout?: "default" | "centered" | "hero" | "coverPhoto" | "noheader";
   coverPhoto?: SanityImageObject;
-  cta_type?: "link" | "navitem" | "open_widget";
+  cta_type?: "link" | "navitem" | "open_widget" | "contact";
   cta_label?: string;
+  cta_email?: string;
   cta_cause_area_id?: number;
   cta_organization_id?: number;
   accent_color?: string;
@@ -24,12 +27,16 @@ export const PageHeader: React.FC<{
   layout = "default",
   cta_type,
   cta_label,
+  cta_email,
   cta_cause_area_id,
   cta_organization_id,
   accent_color,
   coverPhoto,
 }) => {
-  const hasmetacontent = inngress || links;
+  const contactLink =
+    layout === "hero" && cta_type === "contact" ? contactHref(cta_email) : undefined;
+  // Intro and links are optional, so the contact button alone is enough to render this block
+  const hasmetacontent = inngress || links || contactLink;
 
   if (layout === "noheader") {
     return <div className={style.spacer}></div>;
@@ -64,6 +71,23 @@ export const PageHeader: React.FC<{
               organizationId={cta_organization_id}
               cy={"hero-cta-open-widget"}
             />
+          ) : null}
+          {contactLink ? (
+            <a
+              href={contactLink}
+              className={`${buttonStyles.button} ${
+                accent_color ? buttonStyles.buttonaccent : buttonStyles.buttonprimary
+              }`}
+              style={
+                {
+                  ...ctaButtonStyleOverrides,
+                  ...(accent_color ? { "--accent-color": accent_color } : {}),
+                } as React.CSSProperties
+              }
+              data-cy="hero-cta-contact"
+            >
+              {cta_label}
+            </a>
           ) : null}
         </div>
       ) : null}
