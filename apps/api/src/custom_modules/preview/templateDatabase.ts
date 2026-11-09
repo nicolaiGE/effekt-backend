@@ -167,8 +167,13 @@ export const cloneDatabase = async (conn: mysql.Connection, from: string, to: st
   if (!ident.test(String(charset?.cs)) || !ident.test(String(charset?.co))) {
     throw new Error(`Unexpected character set of ${from}`);
   }
-  // nosemgrep: javascript.lang.security.audit.sqli.node-mysql-sqli.node-mysql-sqli -- character set and collation from information_schema, checked against /^[a-z0-9_]+$/ above
-  await conn.query(`CREATE DATABASE ?? CHARACTER SET ${charset.cs} COLLATE ${charset.co}`, [to]);
+  // MySQL takes the character set and collation names as string literals too, so they are
+  // passed as parameters rather than spliced into the statement.
+  await conn.query("CREATE DATABASE ?? CHARACTER SET ? COLLATE ?", [
+    to,
+    String(charset.cs),
+    String(charset.co),
+  ]);
   await conn.query("USE ??", [to]);
   const originalMode = (await conn.query<Row[]>("SELECT @@SESSION.sql_mode AS m"))[0][0].m;
 
