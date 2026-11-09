@@ -71,7 +71,7 @@
   },
   "devDependencies": {
     "@effekt/config": "workspace:*",
-    "@types/chai": "^4.3.5",
+    "@types/chai": "^5.2.3",
     "@types/compression": "^1.8.1",
     "@types/express": "^5.0.6",
     "@types/express-fileupload": "1.5.1",

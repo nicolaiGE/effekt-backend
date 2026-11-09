@@ -525,8 +525,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/config
       '@types/chai':
-        specifier: ^4.3.5
-        version: 4.3.20
+        specifier: ^5.2.3
+        version: 5.2.3
       '@types/compression':
         specifier: ^1.8.1
         version: 1.8.1
@@ -5705,9 +5705,6 @@ packages:
 
   '@types/caseless@0.12.5':
     resolution: {integrity: sha512-hWtVTC2q7hc7xZ/RLbxapMvDMgUnDvKvMOpKal4DrMyfGBUfB1oKaZlIRr6mJL+If3bAP6sV/QneGzF6tJjZDg==}
-
-  '@types/chai@4.3.20':
-    resolution: {integrity: sha512-/pC9HAB5I/xMlc5FP77qjCnI16ChlJfW0tGa0IUcFn38VJrTV6DeZ60NU5KZBtaOZqjdpwTWohz5HU1RrhiYxQ==}
 
   '@types/chai@5.2.3':
     resolution: {integrity: sha512-Mw558oeA9fFbv65/y4mHtXDs9bPnFMZAL/jxdPFUpOHHIXX91mcgEHbS5Lahr+pwZFR8A7GQleRWeI6cGFC2UA==}
@@ -17156,8 +17153,6 @@ snapshots:
       '@types/node': 24.19.2
 
   '@types/caseless@0.12.5': {}
-
-  '@types/chai@4.3.20': {}
 
   '@types/chai@5.2.3':
     dependencies:
