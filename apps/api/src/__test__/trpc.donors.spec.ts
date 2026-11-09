@@ -481,7 +481,9 @@ describe("tRPC donors router", () => {
       sinon.stub(DAO.vipps, "getAgreementsByDonorId").resolves(vipps as any);
 
       const caller = admin();
-      expect(await caller.donors.donations({ donorId: 7 })).to.deep.equal(donations);
+      expect(await caller.donors.donations({ donorId: 7 })).to.deep.equal([
+        { ...donations[0], orgSplit: [] },
+      ]);
       expect(await caller.donors.donationsAggregated({ donorId: 7 })).to.deep.equal(yearly);
       expect(await caller.donors.distributionsAggregated({ donorId: 7 })).to.deep.equal([
         { ...distributions[0], orgSplit: [] },
@@ -494,6 +496,32 @@ describe("tRPC donors router", () => {
         { ID: 1, amount: 500, active: true, notice: false },
       ]);
       expect(await caller.donors.recurring.vipps({ donorId: 7 })).to.deep.equal(vipps);
+    });
+  });
+
+  describe("donations of a donor", () => {
+    it("adds the organization split of each donation's KID", async () => {
+      const split = [
+        {
+          organizationId: 1,
+          organizationName: "Against Malaria Foundation",
+          causeAreaId: 1,
+          chartColor: null,
+          share: "100.000000",
+        },
+      ];
+      sinon.stub(DAO.donations, "getByDonorId").resolves([
+        { id: 1, KID: "111", sum: "100" },
+        { id: 2, KID: "222", sum: "50" },
+      ] as any);
+      const shares = sinon
+        .stub(DAO.distributions, "getOrgSharesByKIDs")
+        .resolves(new Map([["111", split]]));
+
+      const rows = await admin().donors.donations({ donorId: 7 });
+
+      expect(shares.calledOnceWith(["111", "222"])).to.be.true;
+      expect(rows.map((row) => row.orgSplit)).to.deep.equal([split, []]);
     });
   });
 

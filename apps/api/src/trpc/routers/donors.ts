@@ -387,9 +387,12 @@ export const donorsRouter = router({
     return true as const;
   }),
 
+  /** The donor's donations, each with the organization split of its KID */
   donations: adminProcedure
     .input(donorIdInput)
-    .query(({ input }) => DAO.donations.getByDonorId(input.donorId)),
+    .query(async ({ input }) =>
+      withOrgSplits(await DAO.donations.getByDonorId(input.donorId), (donation) => donation.KID),
+    ),
 
   /** Yearly sums per organization */
   donationsAggregated: adminProcedure

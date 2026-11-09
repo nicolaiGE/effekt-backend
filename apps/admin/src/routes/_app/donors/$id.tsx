@@ -121,6 +121,12 @@ const donationColumns = donationCol.columns([
     meta: { placeholder: cellPlaceholder.money, numeric: true, cellClassName: "font-semibold" },
     cell: ({ getValue }) => <Money value={getValue()} signed={moneySign(getValue()) < 0} />,
   }),
+  donationCol.accessor("orgSplit", {
+    id: "orgSplit",
+    header: "Organisations",
+    meta: orgSplitColumnMeta,
+    cell: ({ getValue }) => <OrgSplitCell split={getValue()} />,
+  }),
   donationCol.accessor("transactionCost", {
     header: "Fee",
     meta: {

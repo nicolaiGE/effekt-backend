@@ -351,6 +351,7 @@ export const donorDonations: DonorDonation[] = Array.from({ length: 23 }, (_, in
     taxUnitId: 77,
     timestamp: daysAgo(index * 31 + Math.floor(rand() * 10), rand),
     metaOwnerId: 1,
+    orgSplit: fakeOrgSplit,
   };
 });
 
