@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as DesignRouteImport } from './routes/design'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as TickerRouteImport } from './routes/ticker'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as AppSplatRouteImport } from './routes/_app/$'
 import { Route as AppAvtalegiroChargesRouteImport } from './routes/_app/avtalegiro-charges'
@@ -90,6 +91,11 @@ const DesignRoute = DesignRouteImport.update({
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TickerRoute = TickerRouteImport.update({
+  id: '/ticker',
+  path: '/ticker',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AppIndexRoute = AppIndexRouteImport.update({
@@ -430,6 +436,7 @@ export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
   '/design': typeof DesignRouteWithChildren
   '/login': typeof LoginRoute
+  '/ticker': typeof TickerRoute
   '/regranting': typeof AppRegrantingRouteRouteWithChildren
   '/$': typeof AppSplatRoute
   '/avtalegiro-charges': typeof AppAvtalegiroChargesRoute
@@ -497,6 +504,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
+  '/ticker': typeof TickerRoute
   '/$': typeof AppSplatRoute
   '/avtalegiro-charges': typeof AppAvtalegiroChargesRoute
   '/avtalegiro-check': typeof AppAvtalegiroCheckRoute
@@ -567,6 +575,7 @@ export interface FileRoutesById {
   '/_app': typeof AppRouteWithChildren
   '/design': typeof DesignRouteWithChildren
   '/login': typeof LoginRoute
+  '/ticker': typeof TickerRoute
   '/_app/regranting': typeof AppRegrantingRouteRouteWithChildren
   '/_app/$': typeof AppSplatRoute
   '/_app/avtalegiro-charges': typeof AppAvtalegiroChargesRoute
@@ -639,6 +648,7 @@ export interface FileRouteTypes {
     | '/'
     | '/design'
     | '/login'
+    | '/ticker'
     | '/regranting'
     | '/$'
     | '/avtalegiro-charges'
@@ -706,6 +716,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/login'
+    | '/ticker'
     | '/$'
     | '/avtalegiro-charges'
     | '/avtalegiro-check'
@@ -775,6 +786,7 @@ export interface FileRouteTypes {
     | '/_app'
     | '/design'
     | '/login'
+    | '/ticker'
     | '/_app/regranting'
     | '/_app/$'
     | '/_app/avtalegiro-charges'
@@ -846,6 +858,7 @@ export interface RootRouteChildren {
   AppRoute: typeof AppRouteWithChildren
   DesignRoute: typeof DesignRouteWithChildren
   LoginRoute: typeof LoginRoute
+  TickerRoute: typeof TickerRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -869,6 +882,13 @@ declare module '@tanstack/react-router' {
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/ticker': {
+      id: '/ticker'
+      path: '/ticker'
+      fullPath: '/ticker'
+      preLoaderRoute: typeof TickerRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_app/': {
@@ -1491,6 +1511,7 @@ const rootRouteChildren: RootRouteChildren = {
   AppRoute: AppRouteWithChildren,
   DesignRoute: DesignRouteWithChildren,
   LoginRoute: LoginRoute,
+  TickerRoute: TickerRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

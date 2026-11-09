@@ -1,9 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { MonitorIcon } from "lucide-react";
 import { ErrorState } from "@/components/domain/error-state";
 import { DateTime, Money, MoneyPrecisionProvider, Num } from "@/components/domain/format";
 import { Stat, StatGroup } from "@/components/domain/stat";
 import { DetailPage, PageSection } from "@/components/templates";
+import { Button } from "@/components/ui/button";
 import { SkeletonText } from "@/components/ui/skeleton";
 import { CountUpMoney } from "@/features/analysis/count-up";
 import { NEW_DONOR_MONTHS } from "@/features/analysis/donor-cohorts";
@@ -102,6 +104,15 @@ function ThroughTime({ overview }: { overview: Overview | undefined }) {
     <PageSection
       title={`Given to the recipients${since ? ` since ${since}` : ""}, with open pledges`}
       description="Excludes support for our own operations (Drift). Includes Influenced donations."
+      actions={
+        // The same figure full screen and without signing in, for the screen at the office
+        <Button asChild size="sm" variant="ghost">
+          <Link to="/ticker" target="_blank">
+            <MonitorIcon />
+            Show on a screen
+          </Link>
+        </Button>
+      }
     >
       {/* A headline figure: whole kroner, like the stats above. */}
       <MoneyPrecisionProvider precision="whole">
