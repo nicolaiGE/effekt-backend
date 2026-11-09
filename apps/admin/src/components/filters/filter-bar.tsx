@@ -425,14 +425,39 @@ export function OptionsFilter<V extends string | number>({
     ? options.filter((option) => option.label.toLowerCase().includes(query.toLowerCase()))
     : options;
   const names = options.filter((o) => selected.has(o.value)).map((o) => o.label);
-  const summary = names.length <= 2 ? names.join(", ") : `${names.length} selected`;
+  const left = options.filter((o) => !selected.has(o.value)).map((o) => o.label);
+  const summary =
+    names.length <= 2
+      ? names.join(", ")
+      : left.length === 0
+        ? "All"
+        : left.length <= 2
+          ? `All except ${left.join(", ")}`
+          : `${names.length} selected`;
+  // "Select all" works on what the search shows, so "all except one" is two clicks
+  const visibleSelected = visible.filter((o) => selected.has(o.value)).length;
+  const allVisible =
+    visibleSelected === 0 ? false : visibleSelected === visible.length ? true : "indeterminate";
+
+  function update(next: Set<V>) {
+    const ordered = options.map((o) => o.value).filter((v) => next.has(v));
+    slot.setValue(ordered.length ? ordered : undefined);
+  }
 
   function toggle(value: V) {
     const next = new Set(selected);
     if (next.has(value)) next.delete(value);
     else next.add(value);
-    const ordered = options.map((o) => o.value).filter((v) => next.has(v));
-    slot.setValue(ordered.length ? ordered : undefined);
+    update(next);
+  }
+
+  function toggleVisible() {
+    const next = new Set(selected);
+    for (const option of visible) {
+      if (allVisible === true) next.delete(option.value);
+      else next.add(option.value);
+    }
+    update(next);
   }
 
   return (
@@ -452,6 +477,14 @@ export function OptionsFilter<V extends string | number>({
           className="h-7"
           onChange={(event) => setQuery(event.target.value)}
         />
+      )}
+      {visible.length > 2 && (
+        <label className="-mx-1 flex h-7 cursor-pointer items-center gap-2.5 rounded-sm border-b border-border px-1.5 pb-px text-sm hover:bg-hover">
+          <Checkbox checked={allVisible} onCheckedChange={toggleVisible} />
+          <span className="min-w-0 flex-1 truncate font-medium">
+            {query ? "Select all matches" : "Select all"}
+          </span>
+        </label>
       )}
       <ul className="-mx-1 grid max-h-64 gap-px overflow-y-auto">
         {visible.map((option) => (
