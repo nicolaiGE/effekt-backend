@@ -129,8 +129,9 @@ describe("analysis", () => {
   });
 
   describe("ticker", () => {
-    // The ticker's estimate: 90 days of agreement donations, the newest on 8 November
-    const flow = { sum: 3_110_400, latest: new Date("2026-11-08T06:00:00Z") };
+    // The ticker's estimate: 90 days of agreement donations, the newest dated 8 November
+    // (agreement donations are dated at 00:00 UTC, so all of the 8th is registered)
+    const flow = { sum: 3_110_400, latest: new Date("2026-11-08T00:00:00Z") };
     beforeEach(() => {
       sinon.stub(DAO.analysis, "getAgreementFlow").resolves(flow);
     });
@@ -141,7 +142,8 @@ describe("analysis", () => {
       expect(await callerWith().analysis.ticker()).to.deep.equal({
         sum: "198587465",
         // 3 110 400 kr over 90 days = 0.4 kr a second
-        estimate: { perSecond: 0.4, since: "2026-11-08T06:00:00.000Z" },
+        // and it starts after the newest day, which is already in the sum
+        estimate: { perSecond: 0.4, since: "2026-11-09T00:00:00.000Z" },
       });
     });
 

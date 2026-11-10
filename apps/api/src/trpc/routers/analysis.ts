@@ -186,6 +186,10 @@ export const clearAnalysisCache = () => cache.clear();
 
 const osloNow = () => DateTime.now().setZone(OSLO_ZONE);
 
+/** Midnight UTC after the given time */
+const endOfUtcDay = (time: Date) =>
+  new Date(Date.UTC(time.getUTCFullYear(), time.getUTCMonth(), time.getUTCDate() + 1));
+
 export const analysisRouter = router({
   /** Same numbers as GET /analysis/overview in Nicolai's backend PR #825 */
   overview: adminProcedure.query(async (): Promise<AnalysisOverview> => {
@@ -257,7 +261,10 @@ export const analysisRouter = router({
             flow.latest && flow.sum > 0
               ? {
                   perSecond: flow.sum / (AGREEMENT_FLOW_DAYS * 86_400),
-                  since: flow.latest.toISOString(),
+                  // Agreement donations are dated, not timed (AvtaleGiro's OCR date and Vipps'
+                  // due date, at 00:00 UTC), so the latest day's money is all registered: the
+                  // estimate starts at the end of that day, not its start
+                  since: endOfUtcDay(flow.latest).toISOString(),
                 }
               : null,
         };

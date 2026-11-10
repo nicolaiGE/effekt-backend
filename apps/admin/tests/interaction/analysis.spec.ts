@@ -175,6 +175,35 @@ test("the office screen adds the agreements' estimate, ticks on and never goes b
   expect(await kroner()).toBe(held);
 });
 
+test("the office screen follows a drop larger than a day's flow down", async ({ page }) => {
+  await page.clock.install({ time: new Date("2026-11-09T12:00:00Z") });
+  let calls = 0;
+  let sum = "170245588";
+  await stubAnalysisApi(page, {
+    overrides: {
+      "analysis.ticker": () => {
+        calls++;
+        return { sum, estimate: { perSecond: 0.5, since: "2026-11-09T10:00:00.000Z" } };
+      },
+    },
+  });
+  const kroner = async () =>
+    Number((await page.locator("[data-slot=count-up]").textContent())!.replace(/\D/g, ""));
+  await page.goto("/ticker");
+  await expect(page.getByText(/Includes an estimate for the fixed agreements/)).toBeVisible();
+  await page.clock.pauseAt(new Date("2026-11-09T12:00:10Z"));
+  await page.clock.runFor(100);
+  expect(await kroner()).toBeGreaterThan(170_245_588);
+
+  // A donation of about 1.2 million kr deleted: far more than a day's flow (43 200 kr)
+  sum = "169000000";
+  const before = calls;
+  await page.clock.runFor(60_000);
+  await expect.poll(() => calls).toBeGreaterThan(before);
+  await page.clock.runFor(100);
+  expect(await kroner()).toBeLessThan(169_100_000);
+});
+
 test("the overview links to the office screen", async ({ page }) => {
   await signIn(page);
   await page.goto("/analysis");
