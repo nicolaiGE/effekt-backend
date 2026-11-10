@@ -67,6 +67,9 @@ steps:
       - "europe-north1-docker.pkg.dev/$PROJECT_ID/effekt/effektapi:$BUILD_ID"
       - "--region"
       - "europe-north1"
+      # Not plain `prisma migrate deploy`: see apps/api/prisma/migrate-deploy.mjs
+      - "--command=node"
+      - "--args=prisma/migrate-deploy.mjs"
       - "--execute-now"
       - "--wait"
 
@@ -104,6 +107,9 @@ steps:
       - "europe-north1-docker.pkg.dev/$PROJECT_ID/effekt/effektapi:$BUILD_ID"
       - "--region"
       - "europe-north1"
+      # Not plain `prisma migrate deploy`: see apps/api/prisma/migrate-deploy.mjs
+      - "--command=node"
+      - "--args=prisma/migrate-deploy.mjs"
       - "--execute-now"
       - "--wait"
 

@@ -68,6 +68,16 @@ current image by hand; nothing deploys from it. After that guard both countries 
 deploy at the same time, each migrating before it deploys: they are separate databases and
 services.
 
+The migrate jobs run `node prisma/migrate-deploy.mjs` (set by the same `jobs update`), not
+`prisma migrate deploy` directly. After Cloud SQL restarts (maintenance), the first login of a
+`caching_sha2_password` user needs the full exchange, and over the `/cloudsql` socket Prisma
+then fails with `P1000: Authentication failed` despite the right password (Norway's migrations
+failed this way from the 2026-11-04 maintenance until 2026-11-10). The script first signs in
+once with mysql2, which fetches the server's RSA key, so the server has the login cached when
+Prisma connects. To check by hand whether a login is cold, connect through the Cloud SQL Auth
+Proxy with `mysql --ssl-mode=DISABLED`: a cold user fails with "Authentication requires secure
+connection", and adding `--get-server-public-key` signs in and warms it.
+
 The build ([`scripts/deploy/build-api-image.sh`](../scripts/deploy/build-api-image.sh)) uses
 BuildKit with a layer cache in the registry (`effektapi:buildcache`), since every Cloud Build
 machine starts empty. With an unchanged lockfile and `apps/api/package.json`, neither
