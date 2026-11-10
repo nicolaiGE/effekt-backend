@@ -2,7 +2,8 @@
   "name": "api-scheduled",
   "version": "1.0.0",
   "dependencies": {
-    "@google-cloud/functions-framework": "catalog:"
+    "@google-cloud/functions-framework": "catalog:",
+    "undici": "^7.30.1"
   },
   "private": true,
   "engines": {

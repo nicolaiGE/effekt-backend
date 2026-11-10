@@ -1,3 +1,10 @@
+const { Agent, setGlobalDispatcher } = require("undici");
+
+// Node's fetch gives up after 5 minutes without response headers (UND_ERR_HEADERS_TIMEOUT).
+// Some jobs take longer (the Vipps sync runs ~6 minutes), so they are bounded by the
+// function's own 900 s timeout instead.
+setGlobalDispatcher(new Agent({ headersTimeout: 0, bodyTimeout: 0 }));
+
 /**
  * Responds to any HTTP request.
  *
