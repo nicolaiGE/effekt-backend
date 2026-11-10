@@ -6,12 +6,14 @@ import { DateTime } from "@/components/domain/format";
 import { CountUpMoney } from "@/features/analysis/count-up";
 import { EstimatedTicker } from "@/features/analysis/estimated-ticker";
 import { OVERVIEW_REFRESH_MS } from "@/features/analysis/model";
+import { TickerYear } from "@/features/analysis/ticker-year";
 import { org } from "@/lib/org";
 import { useTRPC } from "@/lib/trpc";
 
 /**
- * The office screen: the Analysis overview's big figure on its own, full screen and without
- * signing in (analysis.ticker is public and has nothing but the total). Outside /_app, so no
+ * The office screen: the money given to the recipients since the start, full screen and without
+ * signing in (analysis.ticker is public: the total, and this year against the goal split by gift
+ * size, never single gifts or donors). Under it, this year's two bars. Outside /_app, so no
  * login, menu or panels. One look whatever the theme: the brand green with the 2026 logo in
  * white, and the butterfly large and faint behind the figure. Asks for new numbers every minute
  * like the overview, and keeps the last figure on screen if a refresh fails.
@@ -64,11 +66,11 @@ function TickerPage() {
             </span>
           )}
         </p>
+        {data && <TickerYear year={data.year} />}
       </div>
       <p className="absolute inset-x-0 bottom-[3vh] text-center text-[clamp(0.875rem,1.1vw,1.5rem)] text-white/80">
         {data && (
           <>
-            {data.estimate && "Includes an estimate for the fixed agreements · "}
             Updated{" "}
             <DateTime value={new Date(ticker.dataUpdatedAt).toISOString()} format="datetime" />
             {ticker.isError && " · couldn't update, trying again"}

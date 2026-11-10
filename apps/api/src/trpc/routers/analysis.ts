@@ -1,7 +1,11 @@
 import { TRPCError } from "@trpc/server";
 import { DateTime } from "luxon";
 import { DAO } from "../../custom_modules/DAO";
-import { AGREEMENT_FLOW_DAYS, buildOverview } from "../../custom_modules/DAO_modules/analysis";
+import {
+  AGREEMENT_FLOW_DAYS,
+  buildOverview,
+  YEAR_GOALS,
+} from "../../custom_modules/DAO_modules/analysis";
 import {
   buildCohorts,
   buildNewDonors,
@@ -25,8 +29,8 @@ import { adminProcedure, publicProcedure, router } from "../trpc";
  * Analysis for the admin: the overview (collected this year, through time, open pledges) and
  * pledges (tilsagn). Pledges are a separate layer on top of the measured totals and are never
  * mixed into them. Same rules as Nicolai's REST endpoints (GET /analysis/overview,
- * /analysis/pledges), reusing his DAO modules. Admin only, except `ticker`: the overview's big
- * figure for the office screen, public and without any split.
+ * /analysis/pledges), reusing his DAO modules. Admin only, except `ticker`: the money received
+ * and this year against the goal, for the office screen, public and without pledges.
  *
  * Money is returned as decimal strings, like the rest of the API. The overview's totals are
  * whole kroner (buildOverview rounds them), so they read e.g. "171237465".
@@ -48,12 +52,13 @@ export type AnalysisOverview = {
 };
 
 /**
- * The public ticker (analysis.ticker): only the big figure on the overview, for a screen at the
- * office that shows it without signing in. No counts and no split into measured and pledged, so a
- * single gift or pledge can't be read off it.
+ * The public ticker (analysis.ticker), for a screen at the office that shows it without signing
+ * in: what has come in, and this year against the goal. Only money received: open pledges are
+ * left out entirely (they show on the admin's overview, not to anyone with the link). No counts
+ * and no donors.
  */
 export type AnalysisTicker = {
-  /** Same as overview.withPledges.sum: given to the recipients since the start + open pledges */
+  /** Same as overview.throughTime.measured: given to the recipients since the start, no pledges */
   sum: string;
   /**
    * The estimate on top: the fixed agreements' average flow in kroner per second (last
@@ -61,6 +66,17 @@ export type AnalysisTicker = {
    * The screen adds `perSecond × (now − since)`: agreement money not registered yet.
    */
   estimate: { perSecond: number; since: string } | null;
+  /**
+   * This year so far against the year's goal, split by gift size like the analysis pipeline:
+   * gifts under 100 000 kr and gifts of 100 000 kr or more (whole kroner, registered only, no
+   * estimate). `goal` is null for a year without a goal.
+   */
+  year: {
+    year: number;
+    small: string;
+    large: string;
+    goal: { small: string; large: string } | null;
+  };
 };
 
 export type PledgeRow = {
@@ -242,7 +258,8 @@ export const analysisRouter = router({
   }),
 
   /**
-   * The overview's big figure without signing in, for the office screen (/ticker in the admin).
+   * The money received since the start (no open pledges) and this year against the goal, without
+   * signing in, for the office screen (/ticker in the admin).
    * Public, so it is kept for a minute: the totals scan every donation, and any number of
    * screens asking every minute cost at most one query a minute.
    */
@@ -250,13 +267,21 @@ export const analysisRouter = router({
     cached(
       "ticker",
       async () => {
-        const [totals, flow] = await Promise.all([
+        const [totals, flow, bySize] = await Promise.all([
           DAO.analysis.getOverviewTotals(),
           DAO.analysis.getAgreementFlow(),
+          DAO.analysis.getYearBySize(),
         ]);
-        const { withPledges } = buildOverview(totals);
+        const { throughTime } = buildOverview(totals);
+        const goal = YEAR_GOALS[bySize.year];
         return {
-          sum: String(withPledges.sum),
+          sum: String(throughTime.measured),
+          year: {
+            year: bySize.year,
+            small: String(Math.round(bySize.small)),
+            large: String(Math.round(bySize.large)),
+            goal: goal ? { small: String(goal.small), large: String(goal.large) } : null,
+          },
           estimate:
             flow.latest && flow.sum > 0
               ? {

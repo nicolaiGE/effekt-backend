@@ -161,6 +161,17 @@
       transform: translate(-3vh, -4vh) rotate(-4deg);
     }
   }
+  /* The office screen's year bars: a faint light runs along the filled part now and then. */
+  --animate-ticker-shine: ticker-shine 6s ease-in-out infinite;
+  @keyframes ticker-shine {
+    0%,
+    40% {
+      transform: translateX(0);
+    }
+    100% {
+      transform: translateX(400%);
+    }
+  }
   /* Table rows arriving: a quick fade while settling a few pixels down into place. The table staggers rows with an
      inline animation-delay. Transform and opacity only, so nothing around the rows moves. */
   --animate-row-in: row-in 180ms var(--ease-out) both;

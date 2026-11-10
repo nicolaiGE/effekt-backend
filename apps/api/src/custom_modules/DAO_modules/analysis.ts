@@ -188,7 +188,65 @@ async function getAgreementFlow(
   };
 }
 
+/** A single gift of this much or more counts as a large gift, as in the analysis pipeline */
+export const LARGE_GIFT = 100_000;
+
+/**
+ * The fundraising goals per year, split like the analysis pipeline's goals (MAAL_SATT in
+ * Data-Analysis-1's definisjoner.py): gifts under LARGE_GIFT and gifts of LARGE_GIFT or more.
+ * 2026 and 2029 are decided; 2027 and 2028 are the straight line between them, as the pipeline
+ * draws them. Kept here until the goals get a place in the admin.
+ */
+export const YEAR_GOALS: Record<number, { small: number; large: number }> = {
+  2026: { small: 28_000_000, large: 50_000_000 },
+  2027: { small: 52_000_000, large: 116_700_000 },
+  2028: { small: 76_000_000, large: 183_300_000 },
+  2029: { small: 100_000_000, large: 250_000_000 },
+};
+
+/**
+ * This calendar year's money to the recipients, split by the size of each gift: under
+ * LARGE_GIFT and LARGE_GIFT or more. The split goes by the single gift, not by what the donor
+ * gives through the year, and the Drift share is held outside, as in the analysis pipeline's
+ * "Innsamlet i gaver under / på 100 000". Influenced donations are included. The year is taken
+ * from the stored value, as in getOverviewTotals.
+ */
+async function getYearBySize(
+  now: Date = new Date(),
+): Promise<{ year: number; small: number; large: number }> {
+  const year = now.getFullYear();
+  const [[row]] = await DAO.query<{ small: string | null; large: string | null }[]>(
+    `
+    SELECT
+      SUM(CASE WHEN d.sum_confirmed < ? THEN to_recipients END) AS small,
+      SUM(CASE WHEN d.sum_confirmed >= ? THEN to_recipients END) AS large
+    FROM (
+      SELECT d.sum_confirmed, d.sum_confirmed * (1 - COALESCE(operations.share, 0)) AS to_recipients
+      FROM Donations d
+      LEFT JOIN (
+        SELECT dca.Distribution_KID AS KID,
+          SUM(dca.Percentage_share / 100 * dcao.Percentage_share / 100) AS share
+        FROM Distribution_cause_areas dca
+        JOIN Distribution_cause_area_organizations dcao
+          ON dcao.Distribution_cause_area_ID = dca.ID
+        JOIN Organizations o ON o.ID = dcao.Organization_ID
+        WHERE o.abbriv = 'Drift' AND dcao.Percentage_share > 0
+        GROUP BY dca.Distribution_KID
+      ) operations ON operations.KID = d.KID_fordeling
+      WHERE YEAR(d.timestamp_confirmed) = ? AND d.timestamp_confirmed <= ?
+    ) d
+    `,
+    [LARGE_GIFT, LARGE_GIFT, year, now],
+  );
+  return {
+    year,
+    small: parseFloat(row.small ?? "0"),
+    large: parseFloat(row.large ?? "0"),
+  };
+}
+
 export const analysis = {
   getOverviewTotals,
   getAgreementFlow,
+  getYearBySize,
 };
