@@ -11,10 +11,13 @@ export function defaultTaxYear(today = new Date()): number {
   return today.getFullYear() - 1;
 }
 
-/** The last five gift years, newest first */
+/**
+ * The gift years to choose from, newest first: this year (to follow the figures while it runs)
+ * and the five before it
+ */
 export function taxYearOptions(today = new Date()): number[] {
-  const latest = defaultTaxYear(today);
-  return Array.from({ length: 5 }, (_, i) => latest - i);
+  const latest = today.getFullYear();
+  return Array.from({ length: 6 }, (_, i) => latest - i);
 }
 
 export type TaxContact = { name: string; email: string; phoneNumber: string; smsNumber: string };

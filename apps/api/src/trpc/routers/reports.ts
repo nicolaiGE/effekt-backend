@@ -23,6 +23,7 @@ import {
   idInput,
   ku65Input,
   missingTaxUnitNoticeInput,
+  taxNoticeStatusInput,
   skatteetatenXmlInput,
   taxOverviewInput,
   logsListInput,
@@ -365,10 +366,25 @@ const taxRouter = router({
     };
   }),
 
-  /** Emails donors with at least minSum but no tax unit (the existing missing tax unit notice) */
+  /**
+   * Emails the donors in "Gets the notice" (at least minSum without tax unit, not left out, not
+   * sent before). A real sending records who got it; a test records nothing.
+   */
   missingTaxUnitNotice: adminProcedure
     .input(missingTaxUnitNoticeInput)
-    .mutation(({ input }) => sendMissingTaxUnitNotices(input)),
+    .mutation(({ input, ctx }) => sendMissingTaxUnitNotices(input, adminIdentity(ctx.auth))),
+
+  /**
+   * Leaves donors out of the year's notice, or puts them back. Donors who have been sent it stay
+   * in "Sent". `changed` counts the donors that moved.
+   */
+  noticeStatus: adminProcedure.input(taxNoticeStatusInput).mutation(async ({ input, ctx }) => {
+    const changed =
+      input.status === "excluded"
+        ? await DAO.taxunitnotices.exclude(input.year, input.donorIds, adminIdentity(ctx.auth))
+        : await DAO.taxunitnotices.include(input.year, input.donorIds);
+    return { changed };
+  }),
 
   /** Swedish KU65 XML (Skatteverket) from a CSV of donation sums per personnummer */
   ku65: adminProcedure.input(ku65Input).mutation(async ({ input }) => {
