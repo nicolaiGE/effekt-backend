@@ -343,7 +343,7 @@ describe("Skatteetaten XML report", () => {
     );
     if (!result.ok) expect.fail(JSON.stringify(result.errors));
     expect(result.xml.match(/<oppgave>/g)).to.have.length(3);
-    expect(result.xml).to.contain(`<foedselsnummer>${PERSON_A}</foedselsnummer>`);
+    expect(result.xml).to.contain(["<foedselsnummer>", PERSON_A, "</foedselsnummer>"].join(""));
     expect(result.xml).to.contain("<beloep>601</beloep>");
     expect(result.xml).to.contain("<beloep>599</beloep>");
     expect(result.xml).to.contain("<beloep>1001</beloep>");
