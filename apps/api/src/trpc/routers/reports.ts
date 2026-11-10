@@ -6,6 +6,8 @@ import type {
   ImportLogUploadDetails,
 } from "../../custom_modules/DAO_modules/logging";
 import { buildKu65Report } from "../../custom_modules/ku65";
+import { sendMissingTaxUnitNotices } from "../../custom_modules/missingTaxUnitNotices";
+import { createXMLReportToTaxAuthorities, getTaxReportOverview } from "../../custom_modules/tax";
 import { osloDayEnd, osloDayRange, osloDayStart } from "../../custom_modules/osloDays";
 import {
   processBankNoReport,
@@ -20,6 +22,9 @@ import {
   donorIdInput,
   idInput,
   ku65Input,
+  missingTaxUnitNoticeInput,
+  skatteetatenXmlInput,
+  taxOverviewInput,
   logsListInput,
   reportUploadInput,
   reviewQueueIgnoreImportInput,
@@ -321,6 +326,50 @@ const transactionsRouter = router({
 });
 
 const taxRouter = router({
+  /**
+   * Control figures and deviation lists for the tax deduction report to Skatteetaten, from our
+   * database. No national IDs: duplicates and invalid numbers are listed by donor and tax unit.
+   */
+  overview: adminProcedure
+    .input(taxOverviewInput)
+    .query(({ input }) => getTaxReportOverview(input.year, input.minSum)),
+
+  /**
+   * The XML file for Skatteetaten from our tax units plus EA Giverportal's CSV. Problems that
+   * would make the report wrong come back as `errors` instead of a file.
+   */
+  skatteetaten: adminProcedure.input(skatteetatenXmlInput).mutation(async ({ input }) => {
+    const result = await createXMLReportToTaxAuthorities(
+      input.year,
+      input.minSum,
+      Buffer.from(await input.report.arrayBuffer()),
+      {
+        name: input.name,
+        email: input.email,
+        phoneNumber: input.phoneNumber,
+        smsNumber: input.smsNumber,
+      },
+    );
+    if (!result.ok) return { file: null, errors: result.errors };
+    const file: FilePayload = {
+      filename: `skattefradrag_${input.year}.xml`,
+      contentType: "application/xml",
+      content: result.xml,
+    };
+    return {
+      file,
+      errors: [],
+      units: result.units,
+      sum: result.sum,
+      giverportalSum: result.giverportalSum,
+    };
+  }),
+
+  /** Emails donors with at least minSum but no tax unit (the existing missing tax unit notice) */
+  missingTaxUnitNotice: adminProcedure
+    .input(missingTaxUnitNoticeInput)
+    .mutation(({ input }) => sendMissingTaxUnitNotices(input)),
+
   /** Swedish KU65 XML (Skatteverket) from a CSV of donation sums per personnummer */
   ku65: adminProcedure.input(ku65Input).mutation(async ({ input }) => {
     let xml: string;

@@ -43,6 +43,12 @@ export const osloDayStart = (isoDate: string): Date => osloDay(isoDate).toJSDate
 export const osloDayEnd = (isoDate: string): Date =>
   osloDay(isoDate).plus({ days: 1 }).startOf("day").toJSDate();
 
+/** A calendar year in Oslo time: from 1 January 00:00 to 1 January the year after (exclusive) */
+export const osloYearRange = (year: number): Required<InstantRange> => ({
+  from: osloDayStart(`${year}-01-01`),
+  before: osloDayStart(`${year + 1}-01-01`),
+});
+
 /** Today's date in Oslo, YYYY-MM-DD */
 export const osloToday = (): string => DateTime.now().setZone(OSLO_ZONE).toISODate()!;
 
