@@ -527,7 +527,9 @@ function MissingTaxUnitNotice({
           await send.mutateAsync({
             year,
             minSum,
-            ...(testMode ? { testEmail: testEmail.trim(), testLimit: limit } : {}),
+            ...(testMode
+              ? { testEmail: testEmail.trim(), testLimit: limit }
+              : { confirmYear: year }),
           });
         }}
       >

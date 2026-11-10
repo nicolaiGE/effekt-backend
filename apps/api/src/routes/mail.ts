@@ -6,7 +6,10 @@ import {
   sendAvtalegiroNotification,
   sendSanitySecurityNotice,
 } from "../custom_modules/mail";
-import { sendMissingTaxUnitNotices } from "../custom_modules/missingTaxUnitNotices";
+import {
+  noticeOptionsProblem,
+  sendMissingTaxUnitNotices,
+} from "../custom_modules/missingTaxUnitNotices";
 
 import express from "express";
 import {
@@ -76,7 +79,7 @@ router.post("/taxreport/notice", authMiddleware.isAdmin, async (req, res) => {
  */
 router.post("/notice/missingtaxunit", authMiddleware.isAdmin, async (req, res, next) => {
   try {
-    const { excludedEmails = [], year, minSum, testEmail, testLimit } = req.body;
+    const { excludedEmails = [], year, minSum, testEmail, testLimit, confirmYear } = req.body;
     if (!year || !minSum) {
       res.status(400).json({
         status: 400,
@@ -85,13 +88,14 @@ router.post("/notice/missingtaxunit", authMiddleware.isAdmin, async (req, res, n
       return;
     }
 
-    const content = await sendMissingTaxUnitNotices({
-      year,
-      minSum,
-      excludedEmails,
-      testEmail,
-      testLimit,
-    });
+    const options = { year, minSum, excludedEmails, testEmail, testLimit, confirmYear };
+    const problem = noticeOptionsProblem(options);
+    if (problem) {
+      res.status(400).json({ status: 400, content: problem });
+      return;
+    }
+
+    const content = await sendMissingTaxUnitNotices(options);
 
     res.json({ status: 200, content });
   } catch (ex) {

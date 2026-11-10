@@ -10,10 +10,12 @@ import {
   ANONYMOUS_DONOR_ID,
   classifyDonorsWithoutTaxUnit,
   noticeRecipients,
+  sendMissingTaxUnitNotices,
 } from "../custom_modules/missingTaxUnitNotices";
 import * as mail from "../custom_modules/mail";
 import { checkNorwegianId, maskIdNumbers } from "../custom_modules/norwegianId";
 import { osloYearRange } from "../custom_modules/osloDays";
+import { LAST_UTC_TAX_YEAR, taxYearRange } from "../custom_modules/DAO_modules/tax";
 import {
   createXMLReportToTaxAuthorities,
   getTaxReportOverview,
@@ -115,31 +117,53 @@ describe("Norwegian ID check (mod 11)", () => {
   });
 });
 
-describe("Oslo year range", () => {
+describe("Gift year range", () => {
   it("starts and ends the year at midnight in Oslo, not UTC", () => {
     const range = osloYearRange(2025);
     expect(range.from.toISOString()).to.equal("2024-12-31T23:00:00.000Z");
     expect(range.before.toISOString()).to.equal("2025-12-31T23:00:00.000Z");
   });
 
+  it("keeps UTC years for the years already reported that way, so they come out as filed", () => {
+    const range = taxYearRange(LAST_UTC_TAX_YEAR);
+    expect(range.from.toISOString()).to.equal("2025-01-01T00:00:00.000Z");
+    expect(range.before.toISOString()).to.equal("2026-01-01T00:00:00.000Z");
+  });
+
+  it("starts the first Oslo year where the last UTC year ended, so no gift is reported twice", () => {
+    const first = taxYearRange(LAST_UTC_TAX_YEAR + 1);
+    expect(first.from.toISOString()).to.equal("2026-01-01T00:00:00.000Z");
+    expect(first.before.toISOString()).to.equal("2026-12-31T23:00:00.000Z");
+    const next = taxYearRange(LAST_UTC_TAX_YEAR + 2);
+    expect(next.from.toISOString()).to.equal("2026-12-31T23:00:00.000Z");
+    expect(next.before.toISOString()).to.equal("2027-12-31T23:00:00.000Z");
+    // A gift at 00:30 in Oslo on 1 January 2026 was reported for 2025, and only there
+    const gift = new Date("2025-12-31T23:30:00Z");
+    const inYear = (y: number) => {
+      const r = taxYearRange(y);
+      return gift >= r.from && gift < r.before;
+    };
+    expect([2024, 2025, 2026, 2027].filter(inYear)).to.deep.equal([2025]);
+  });
+
   afterEach(() => sinon.restore());
 
-  it("limits the tax unit sums to the Oslo year in SQL", async () => {
+  it("limits the tax unit sums to the gift year in SQL", async () => {
     const query = sinon.stub(DAO, "query").resolves([[], []] as any);
-    await DAO.tax.getTaxXMLReportUnits(2025);
+    await DAO.tax.getTaxXMLReportUnits(2027);
     const sql: string = query.firstCall.args[0];
-    expect(sql).to.contain("D.timestamp_confirmed >= '2024-12-31 23:00:00.000'");
-    expect(sql).to.contain("D.timestamp_confirmed < '2025-12-31 23:00:00.000'");
+    expect(sql).to.contain("D.timestamp_confirmed >= '2026-12-31 23:00:00.000'");
+    expect(sql).to.contain("D.timestamp_confirmed < '2027-12-31 23:00:00.000'");
     expect(sql).to.not.match(/YEAR\s*\(/);
   });
 
   it("uses the same bounds for the totals and the donors without tax unit (and the notice)", async () => {
     const query = sinon.stub(DAO, "query").resolves([[{ total: 0, withoutTaxUnit: 0 }], []] as any);
-    await DAO.tax.getDonationTotalsInYear(2025);
-    await DAO.tax.getDonorsWithoutTaxUnitInYear(2025, 500);
+    await DAO.tax.getDonationTotalsInYear(2026);
+    await DAO.tax.getDonorsWithoutTaxUnitInYear(2026, 500);
     for (const call of query.getCalls()) {
-      expect(call.args[0]).to.contain("D.timestamp_confirmed >= '2024-12-31 23:00:00.000'");
-      expect(call.args[0]).to.contain("D.timestamp_confirmed < '2025-12-31 23:00:00.000'");
+      expect(call.args[0]).to.contain("D.timestamp_confirmed >= '2026-01-01 00:00:00.000'");
+      expect(call.args[0]).to.contain("D.timestamp_confirmed < '2026-12-31 23:00:00.000'");
     }
     expect(query.lastCall.args[1]).to.deep.equal([500]);
   });
@@ -434,5 +458,74 @@ describe("tRPC reports.tax", () => {
     expect(result).to.deep.equal({ total: 1, success: 1, failed: 0, testMode: true });
     expect(send.callCount).to.equal(1);
     expect(send.firstCall.args[2]).to.equal("test@example.org");
+  });
+
+  const twoDonors = () =>
+    sinon
+      .stub(DAO.tax, "getDonorsWithoutTaxUnitInYear")
+      .resolves([
+        withoutUnit({ donorId: 1, email: "a@example.org", donationsSum: "900.00" }),
+        withoutUnit({ donorId: 2, email: "b@example.org", donationsSum: "800.00" }),
+      ]);
+
+  it("refuses to email the donors without the year repeated in confirmYear", async () => {
+    twoDonors();
+    const send = sinon.stub(mail, "sendMissingTaxUnitNotice").resolves(true);
+    for (const input of [
+      { year: 2025, minSum: 500 },
+      { year: 2025, minSum: 500, confirmYear: 2024 },
+    ]) {
+      try {
+        await callerWith(["admin"]).reports.tax.missingTaxUnitNotice(input);
+        expect.fail("expected BAD_REQUEST");
+      } catch (err: any) {
+        expect(err.code).to.equal("BAD_REQUEST");
+      }
+    }
+    expect(send.callCount).to.equal(0);
+  });
+
+  it("refuses testLimit without testEmail, which would email real donors", async () => {
+    twoDonors();
+    const send = sinon.stub(mail, "sendMissingTaxUnitNotice").resolves(true);
+    try {
+      await callerWith(["admin"]).reports.tax.missingTaxUnitNotice({
+        year: 2025,
+        minSum: 500,
+        testLimit: 1,
+      });
+      expect.fail("expected BAD_REQUEST");
+    } catch (err: any) {
+      expect(err.code).to.equal("BAD_REQUEST");
+    }
+    expect(send.callCount).to.equal(0);
+  });
+
+  it("emails the donors themselves when the year is confirmed, and says it isn't a test", async () => {
+    twoDonors();
+    const send = sinon.stub(mail, "sendMissingTaxUnitNotice").resolves(true);
+    const result = await callerWith(["admin"]).reports.tax.missingTaxUnitNotice({
+      year: 2025,
+      minSum: 500,
+      confirmYear: 2025,
+    });
+    expect(result).to.deep.equal({ total: 2, success: 2, failed: 0, testMode: false });
+    expect(send.getCalls().map((call) => call.args[2])).to.have.members([
+      "a@example.org",
+      "b@example.org",
+    ]);
+  });
+
+  it("refuses an unconfirmed send in the sending code too (the REST route uses it)", async () => {
+    twoDonors();
+    const send = sinon.stub(mail, "sendMissingTaxUnitNotice").resolves(true);
+    let error: Error | undefined;
+    try {
+      await sendMissingTaxUnitNotices({ year: 2025, minSum: 500 });
+    } catch (err: any) {
+      error = err;
+    }
+    expect(error?.message).to.match(/confirmYear/);
+    expect(send.callCount).to.equal(0);
   });
 });

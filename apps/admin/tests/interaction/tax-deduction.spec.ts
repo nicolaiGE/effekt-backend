@@ -146,9 +146,14 @@ test("tax deduction: the missing tax unit notice in test mode goes to the test a
   await page.getByRole("button", { name: "Send missing tax unit notice" }).click();
   await dialog.getByLabel("Test mode").click();
   await expect(dialog).toContainText("1 donor in “Gets the notice” get the email");
-  await expect(dialog.getByRole("button", { name: "Send to donors" })).toBeDisabled();
-  await page.keyboard.press("Escape");
-  expect(calls.notice).toHaveLength(1);
+  const realSend = dialog.getByRole("button", { name: "Send to donors" });
+  await expect(realSend).toBeDisabled();
+  // The typed year goes to the API too, which refuses a real send without it
+  await dialog.getByLabel(/to confirm/).fill(String(lastYear));
+  await realSend.click();
+  await expect
+    .poll(() => calls.notice[1])
+    .toEqual({ year: lastYear, minSum: 500, confirmYear: lastYear });
 });
 
 test("tax deduction: the XML needs contact details and the CSV, shows errors and downloads", async ({

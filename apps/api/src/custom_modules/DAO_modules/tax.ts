@@ -4,7 +4,7 @@ import { DAO } from "../DAO";
 import { getTaxUnitsWithDeductions } from "../taxdeductions";
 import { Distributions, Tax_unit } from "@prisma/client";
 import { RequestLocale } from "../../middleware/locale";
-import { instantRangeClauses, osloYearRange } from "../osloDays";
+import { type InstantRange, instantRangeClauses, osloYearRange } from "../osloDays";
 
 //region Get
 /**
@@ -178,9 +178,27 @@ async function getReportsWithUserOnProfilePage(): Promise<EmailTaxUnitReport[]> 
   return mapped;
 }
 
-/** Donations.timestamp_confirmed within the calendar year in Oslo time, as SQL clauses */
-const confirmedInOsloYear = (year: number) =>
-  instantRangeClauses("D.timestamp_confirmed", osloYearRange(year)).join(" AND ");
+/** The last gift year reported with UTC years (`YEAR(timestamp_confirmed)`), before Oslo time */
+export const LAST_UTC_TAX_YEAR = 2025;
+
+/**
+ * The donations that belong to a gift year in the report to Skatteetaten. Years up to
+ * LAST_UTC_TAX_YEAR were reported with UTC years, and those reports are filed: they keep UTC years,
+ * so they come out as filed. The year after starts where the last UTC year ended (1 January 00:00
+ * UTC), so gifts in the first hour of the year in Oslo, already reported for the year before, are
+ * not reported again. From then on the years follow Oslo time.
+ */
+export function taxYearRange(year: number): Required<InstantRange> {
+  const utcYearStart = (y: number) => new Date(Date.UTC(y, 0, 1));
+  if (year <= LAST_UTC_TAX_YEAR)
+    return { from: utcYearStart(year), before: utcYearStart(year + 1) };
+  const oslo = osloYearRange(year);
+  return year === LAST_UTC_TAX_YEAR + 1 ? { from: utcYearStart(year), before: oslo.before } : oslo;
+}
+
+/** Donations.timestamp_confirmed within the gift year (taxYearRange), as SQL clauses */
+const confirmedInTaxYear = (year: number) =>
+  instantRangeClauses("D.timestamp_confirmed", taxYearRange(year)).join(" AND ");
 
 export type TaxUnitYearSum = {
   taxUnitId: number;
@@ -192,7 +210,7 @@ export type TaxUnitYearSum = {
 };
 
 /**
- * Donations confirmed in the year (Oslo time) summed per tax unit. One row per tax unit: several
+ * Donations confirmed in the gift year (taxYearRange) summed per tax unit. One row per tax unit: several
  * units can share a national ID (one person registered on several donors), so callers group them
  * by number (groupTaxUnitsBySsn) before reporting.
  */
@@ -214,7 +232,7 @@ async function getTaxXMLReportUnits(year: number): Promise<TaxUnitYearSum[]> {
       INNER JOIN Tax_unit
         ON Tax_unit.ID = DI.Tax_unit_ID
 
-      WHERE ${confirmedInOsloYear(year)}
+      WHERE ${confirmedInTaxYear(year)}
 
       GROUP BY Tax_unit.ID
         
@@ -232,7 +250,7 @@ async function getTaxXMLReportUnits(year: number): Promise<TaxUnitYearSum[]> {
 }
 
 /**
- * All donations confirmed in the year (Oslo time), and the part on distributions without a tax
+ * All donations confirmed in the gift year (taxYearRange), and the part on distributions without a tax
  * unit. The rest is exactly what getTaxXMLReportUnits sums, so the two can be checked against
  * each other.
  */
@@ -254,7 +272,7 @@ async function getDonationTotalsInYear(
       LEFT JOIN Tax_unit as TU
         ON TU.ID = DI.Tax_unit_ID
 
-      WHERE ${confirmedInOsloYear(year)}
+      WHERE ${confirmedInTaxYear(year)}
   `,
   );
   return {
@@ -279,7 +297,7 @@ export type DonorWithoutTaxUnitRow = {
 };
 
 /**
- * Donors whose donations without a tax unit in the year (Oslo time) add up to at least minSum.
+ * Donors whose donations without a tax unit in the gift year (taxYearRange) add up to at least minSum.
  * Who of them gets the missing tax unit notice is decided by classifyDonorsWithoutTaxUnit.
  */
 async function getDonorsWithoutTaxUnitInYear(
@@ -311,7 +329,7 @@ async function getDonorsWithoutTaxUnitInYear(
         ON TU.ID = DI.Tax_unit_ID
 
       WHERE TU.ID IS NULL
-        AND ${confirmedInOsloYear(year)}
+        AND ${confirmedInTaxYear(year)}
 
       GROUP BY D.Donor_ID
 

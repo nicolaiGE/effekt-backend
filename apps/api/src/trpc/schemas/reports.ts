@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { noticeOptionsProblem } from "../../custom_modules/missingTaxUnitNoticeOptions";
 import { TRPC_MAX_BODY_SIZE } from "../reportsMultipart";
 import {
   reviewQueueSources,
@@ -117,14 +118,21 @@ export const skatteetatenXmlInput = formDataInput({
   smsNumber: requiredText("SMS number", 20),
 });
 
-export const missingTaxUnitNoticeInput = z.strictObject({
-  year: taxYear,
-  minSum: taxMinSum.min(1),
-  /** Test mode: every notice goes to this address */
-  testEmail: z.email().max(255).optional(),
-  /** Test mode: only the first donors */
-  testLimit: z.number().int().min(1).max(100).optional(),
-});
+export const missingTaxUnitNoticeInput = z
+  .strictObject({
+    year: taxYear,
+    minSum: taxMinSum.min(1),
+    /** Test mode: every notice goes to this address */
+    testEmail: z.email().max(255).optional(),
+    /** Test mode: only the first donors (with testEmail) */
+    testLimit: z.number().int().min(1).max(100).optional(),
+    /** Sending to the donors themselves: the year again, as typed in the confirmation */
+    confirmYear: taxYear.optional(),
+  })
+  .superRefine((input, ctx) => {
+    const problem = noticeOptionsProblem(input);
+    if (problem) ctx.addIssue({ code: "custom", message: problem, path: ["confirmYear"] });
+  });
 
 //endregion
 

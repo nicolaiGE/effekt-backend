@@ -3,6 +3,12 @@ import { Decimal } from "decimal.js";
 import type { DonorWithoutTaxUnitRow } from "./DAO_modules/tax";
 import * as mail from "./mail";
 import type { EligibleDonor } from "./mail";
+import {
+  type MissingTaxUnitNoticeOptions,
+  noticeOptionsProblem,
+} from "./missingTaxUnitNoticeOptions";
+
+export { type MissingTaxUnitNoticeOptions, noticeOptionsProblem };
 
 /** The shared donor for gifts without contact details (see also vipps.ts and amf.ts) */
 export const ANONYMOUS_DONOR_ID = 1464;
@@ -84,16 +90,6 @@ export function noticeRecipients(
   return [...byEmail.values()].sort((a, b) => b.donationsSum - a.donationsSum);
 }
 
-export type MissingTaxUnitNoticeOptions = {
-  year: number;
-  minSum: number;
-  excludedEmails?: string[];
-  /** Test mode: send every notice to this address instead of the donor's */
-  testEmail?: string;
-  /** Test mode: only the first (largest) donors */
-  testLimit?: number;
-};
-
 export type MissingTaxUnitNoticeResult = {
   total: number;
   success: number;
@@ -112,7 +108,10 @@ export async function sendMissingTaxUnitNotices({
   excludedEmails = [],
   testEmail,
   testLimit,
+  confirmYear,
 }: MissingTaxUnitNoticeOptions): Promise<MissingTaxUnitNoticeResult> {
+  const problem = noticeOptionsProblem({ year, minSum, testEmail, testLimit, confirmYear });
+  if (problem) throw new Error(problem);
   let donorsWithDonationsMissingTaxUnit = noticeRecipients(
     classifyDonorsWithoutTaxUnit(await DAO.tax.getDonorsWithoutTaxUnitInYear(year, minSum), minSum),
     excludedEmails,
@@ -180,6 +179,6 @@ export async function sendMissingTaxUnitNotices({
     total: totalEmails,
     success: successfullySent,
     failed: failedToSend,
-    testMode: !!(testEmail || testLimit),
+    testMode: !!testEmail,
   };
 }
