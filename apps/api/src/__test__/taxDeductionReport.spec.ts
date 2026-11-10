@@ -180,14 +180,16 @@ describe("Who gets the missing tax unit notice", () => {
       withoutUnit({ donorId: 6, email: "ukjent-6@gieffektivt.no" }),
       withoutUnit({ donorId: 7, email: "kjoper@auksjon.example.org" }),
       withoutUnit({ donorId: 8, taxUnits: 1 }),
-      withoutUnit({ donorId: 9, donationsSum: "1000.00", fundraiserSum: "500.01" }),
+      // Mostly or only fundraiser gifts: a tax unit they register covers those too
+      withoutUnit({ donorId: 9, donationsSum: "1000.00", fundraiserSum: "1000.00" }),
       withoutUnit({ donorId: 10, donationsSum: "1000.00", fundraiserSum: "500.00" }),
       withoutUnit({ donorId: 11, email: "DONOR1@example.org", donationsSum: "600.00" }),
+      withoutUnit({ donorId: 12, donationsSum: "499.99" }),
     ],
     500,
   );
 
-  it("leaves out deleted, anonymous, address-less, internal, tax unit and fundraiser donors", () => {
+  it("leaves out deleted, anonymous, address-less, internal and tax unit donors, not fundraiser givers", () => {
     expect(classified.map((donor) => [donor.donorId, donor.exclusion])).to.deep.equal([
       [1, null],
       [2, "trashed"],
@@ -197,19 +199,22 @@ describe("Who gets the missing tax unit notice", () => {
       [6, "internalEmail"],
       [7, "internalEmail"],
       [8, "hasTaxUnit"],
-      [9, "fundraisersOnly"],
+      [9, null],
       [10, null],
       [11, null],
     ]);
-    expect(classified.find((donor) => donor.donorId === 10)!.noticeSum).to.equal("500.00");
+    // Fundraiser gifts count in full; below minSum is not listed at all
+    expect(classified.find((donor) => donor.donorId === 9)!.noticeSum).to.equal("1000.00");
+    expect(classified.find((donor) => donor.donorId === 10)!.noticeSum).to.equal("1000.00");
   });
 
   it("sends one notice per address, largest first, without excluded addresses", () => {
     expect(noticeRecipients(classified).map((r) => [r.email, r.donationsSum])).to.deep.equal([
       ["donor1@example.org", 1600],
-      ["donor10@example.org", 500],
+      ["donor9@example.org", 1000],
+      ["donor10@example.org", 1000],
     ]);
-    expect(noticeRecipients(classified, ["Donor10@example.org"])).to.have.length(1);
+    expect(noticeRecipients(classified, ["Donor10@example.org"])).to.have.length(2);
   });
 });
 

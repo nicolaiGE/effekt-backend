@@ -14,8 +14,7 @@ export { type MissingTaxUnitNoticeOptions, noticeOptionsProblem };
 export const ANONYMOUS_DONOR_ID = 1464;
 
 /** Why a donor without tax unit does not get the missing tax unit notice */
-export type NoticeExclusion =
-  "trashed" | "anonymous" | "noEmail" | "internalEmail" | "hasTaxUnit" | "fundraisersOnly";
+export type NoticeExclusion = "trashed" | "anonymous" | "noEmail" | "internalEmail" | "hasTaxUnit";
 
 export const noticeExclusionLabels: Record<NoticeExclusion, string> = {
   trashed: "Deleted donor",
@@ -23,7 +22,6 @@ export const noticeExclusionLabels: Record<NoticeExclusion, string> = {
   noEmail: "No email address",
   internalEmail: "Internal or placeholder address",
   hasTaxUnit: "Has a tax unit, check the KIDs",
-  fundraisersOnly: "Fundraiser gifts",
 };
 
 export type ClassifiedDonor = DonorWithoutTaxUnitRow & {
@@ -43,31 +41,34 @@ const isInternalEmail = (email: string) => {
 
 /**
  * Decides who of the donors without tax unit gets the notice. The list in the admin panel and the
- * sending use this, so they always agree. Fundraiser gifts don't count towards minSum: a tax unit
- * added later isn't connected to them (connectDonationsForFirstTaxUnit skips fundraiser KIDs).
+ * sending use this, so they always agree. Fundraiser gifts count towards minSum like any other:
+ * a tax unit the donor registers is put on all their distributions, fundraiser ones included
+ * (connectFirstTaxUnit), and connectDonationsForFirstTaxUnit never moves fundraiser donations off
+ * them, so last year's fundraiser gifts are reported once the donor has registered.
  */
 export function classifyDonorsWithoutTaxUnit(
   rows: DonorWithoutTaxUnitRow[],
   minSum: number,
 ): ClassifiedDonor[] {
-  return rows.map((row) => {
-    const noticeSum = new Decimal(row.donationsSum).sub(row.fundraiserSum);
-    const email = (row.email ?? "").trim();
-    const exclusion: NoticeExclusion | null = row.trashed
-      ? "trashed"
-      : row.donorId === ANONYMOUS_DONOR_ID
-        ? "anonymous"
-        : email === ""
-          ? "noEmail"
-          : isInternalEmail(email)
-            ? "internalEmail"
-            : row.taxUnits > 0
-              ? "hasTaxUnit"
-              : noticeSum.lt(minSum)
-                ? "fundraisersOnly"
+  // The query already has HAVING >= minSum; kept here so the list can't drift from the rule
+  return rows
+    .filter((row) => new Decimal(row.donationsSum).gte(minSum))
+    .map((row) => {
+      const noticeSum = new Decimal(row.donationsSum);
+      const email = (row.email ?? "").trim();
+      const exclusion: NoticeExclusion | null = row.trashed
+        ? "trashed"
+        : row.donorId === ANONYMOUS_DONOR_ID
+          ? "anonymous"
+          : email === ""
+            ? "noEmail"
+            : isInternalEmail(email)
+              ? "internalEmail"
+              : row.taxUnits > 0
+                ? "hasTaxUnit"
                 : null;
-    return { ...row, noticeSum: noticeSum.toFixed(2), exclusion };
-  });
+      return { ...row, noticeSum: noticeSum.toFixed(2), exclusion };
+    });
 }
 
 /** The notice's recipients: one per email address, largest first */
@@ -99,7 +100,7 @@ export type MissingTaxUnitNoticeResult = {
 
 /**
  * Sends the "you have no tax unit" notice to the donors classifyDonorsWithoutTaxUnit lets through
- * (at least minSum in the year without tax unit, not counting fundraiser gifts). In batches of 10,
+ * (at least minSum in the year without tax unit, fundraiser gifts included). In batches of 10,
  * a second apart.
  */
 export async function sendMissingTaxUnitNotices({

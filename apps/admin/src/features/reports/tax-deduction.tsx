@@ -304,8 +304,8 @@ function WithoutTaxUnit({ overview }: { overview: Overview }) {
           <p className="mt-2">
             The notice skips deleted and anonymous donors, donors without a real email address, and
             donors who already have a tax unit (their gifts are on KIDs without it: check those by
-            hand). Fundraiser gifts don't count towards {min}, since a new tax unit isn't connected
-            to them.
+            hand). Fundraiser gifts count towards {min}: a tax unit the donor registers covers them
+            too.
           </p>
         </>
       }
