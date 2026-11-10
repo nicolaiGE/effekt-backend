@@ -1,6 +1,14 @@
 import type { Page, Route } from "@playwright/test";
 import { homeTrendsFixture } from "./helpers";
 
+/** This year on the office screen: 22.6 of 78 million kr, split like the analysis pipeline */
+export const tickerYearFixture = {
+  year: 2026,
+  small: "14763184",
+  large: "7806266",
+  goal: { small: "28000000", large: "50000000" },
+};
+
 /**
  * Fixtures shaped like the analysis.* router outputs, and a stubbed API (dev sign-in + tRPC) for
  * the a11y and interaction specs (also used for other pages through `extra`). `overrides` answers a procedure with a function of its input
@@ -122,7 +130,7 @@ const fixtures: Record<string, unknown> = {
   "analysis.newDonors": newDonorsFixture(),
   "analysis.cohorts": cohortsFixture(),
   "analysis.overview": overviewFixture(),
-  "analysis.ticker": { sum: "170245588", estimate: null },
+  "analysis.ticker": { sum: "170245588", estimate: null, year: tickerYearFixture },
   "home.trends": homeTrendsFixture(),
   "analysis.pledges.list": pledgesFixture(),
   "donations.get": donationFixture,

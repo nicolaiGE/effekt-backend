@@ -132,19 +132,36 @@ describe("analysis", () => {
     // The ticker's estimate: 90 days of agreement donations, the newest dated 8 November
     // (agreement donations are dated at 00:00 UTC, so all of the 8th is registered)
     const flow = { sum: 3_110_400, latest: new Date("2026-11-08T00:00:00Z") };
+    // This year so far: 14.76 million kr in gifts under 100 000 kr, 7.8 million in larger ones
+    const bySize = { year: 2026, small: 14_763_184.4, large: 7_806_266 };
     beforeEach(() => {
       sinon.stub(DAO.analysis, "getAgreementFlow").resolves(flow);
+      sinon.stub(DAO.analysis, "getYearBySize").resolves(bySize);
     });
     afterEach(() => clearAnalysisCache());
 
-    it("gives anyone the overview's big figure and the agreements' flow, nothing else", async () => {
+    it("gives anyone the money received, the agreements' flow and the year, no pledges", async () => {
       sinon.stub(DAO.analysis, "getOverviewTotals").resolves(totals);
       expect(await callerWith().analysis.ticker()).to.deep.equal({
-        sum: "198587465",
+        // The measured total only: the 27 350 000 kr in open pledges are left out
+        sum: "171237465",
         // 3 110 400 kr over 90 days = 0.4 kr a second
         // and it starts after the newest day, which is already in the sum
         estimate: { perSecond: 0.4, since: "2026-11-09T00:00:00.000Z" },
+        // Whole kroner, against the analysis pipeline's goals for 2026
+        year: {
+          year: 2026,
+          small: "14763184",
+          large: "7806266",
+          goal: { small: "28000000", large: "50000000" },
+        },
       });
+    });
+
+    it("has no goal for a year without one", async () => {
+      sinon.stub(DAO.analysis, "getOverviewTotals").resolves(totals);
+      (DAO.analysis.getYearBySize as sinon.SinonStub).resolves({ ...bySize, year: 2031 });
+      expect((await callerWith().analysis.ticker()).year.goal).to.equal(null);
     });
 
     it("has no estimate without agreement donations in the last 90 days", async () => {
@@ -169,7 +186,7 @@ describe("analysis", () => {
       stub.onFirstCall().rejects(new Error("db down"));
       stub.onSecondCall().resolves(totals);
       await expectCode(callerWith().analysis.ticker(), "INTERNAL_SERVER_ERROR");
-      expect((await callerWith().analysis.ticker()).sum).to.equal("198587465");
+      expect((await callerWith().analysis.ticker()).sum).to.equal("171237465");
     });
   });
 

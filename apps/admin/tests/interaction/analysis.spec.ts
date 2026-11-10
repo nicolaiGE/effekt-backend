@@ -4,6 +4,7 @@ import {
   overviewFixture,
   pledgesFixture,
   stubAnalysisApi,
+  tickerYearFixture,
 } from "../analysis-fixtures";
 
 /** The analysis pages against a stubbed API: the count-up, and adding and closing pledges. */
@@ -88,7 +89,7 @@ test("the office screen shows the figure without signing in and keeps it fresh",
 }) => {
   await page.clock.install();
   await page.emulateMedia({ reducedMotion: "reduce" });
-  const ticker = { sum: "170245588", estimate: null };
+  const ticker = { sum: "170245588", estimate: null, year: tickerYearFixture };
   let calls = 0;
   let failing = false;
   const authHeaders: (string | undefined)[] = [];
@@ -143,14 +144,16 @@ test("the office screen adds the agreements' estimate, ticks on and never goes b
       // 0.5 kr a second since 10:00: about 3 600 kr not registered yet at noon
       "analysis.ticker": () => {
         calls++;
-        return { sum, estimate: { perSecond: 0.5, since } };
+        return { sum, estimate: { perSecond: 0.5, since }, year: tickerYearFixture };
       },
     },
   });
   const kroner = async () =>
     Number((await page.locator("[data-slot=count-up]").textContent())!.replace(/\D/g, ""));
   await page.goto("/ticker");
-  await expect(page.getByText(/Includes an estimate for the fixed agreements/)).toBeVisible();
+  await expect(page.getByText(/^Updated/)).toBeVisible();
+  // The screen only says when it was updated, not that an estimate is included
+  await expect(page.getByText(/estimate/i)).toHaveCount(0);
   // From here on the figure moves only when the test lets time run
   await page.clock.pauseAt(new Date("2026-11-09T12:00:10Z"));
   await page.clock.runFor(100);
@@ -183,14 +186,18 @@ test("the office screen follows a drop larger than a day's flow down", async ({ 
     overrides: {
       "analysis.ticker": () => {
         calls++;
-        return { sum, estimate: { perSecond: 0.5, since: "2026-11-09T10:00:00.000Z" } };
+        return {
+          sum,
+          estimate: { perSecond: 0.5, since: "2026-11-09T10:00:00.000Z" },
+          year: tickerYearFixture,
+        };
       },
     },
   });
   const kroner = async () =>
     Number((await page.locator("[data-slot=count-up]").textContent())!.replace(/\D/g, ""));
   await page.goto("/ticker");
-  await expect(page.getByText(/Includes an estimate for the fixed agreements/)).toBeVisible();
+  await expect(page.getByText(/^Updated/)).toBeVisible();
   await page.clock.pauseAt(new Date("2026-11-09T12:00:10Z"));
   await page.clock.runFor(100);
   expect(await kroner()).toBeGreaterThan(170_245_588);
@@ -202,6 +209,39 @@ test("the office screen follows a drop larger than a day's flow down", async ({ 
   await expect.poll(() => calls).toBeGreaterThan(before);
   await page.clock.runFor(100);
   expect(await kroner()).toBeLessThan(169_100_000);
+});
+
+test("the office screen shows this year against the goal, split by gift size", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await stubAnalysisApi(page);
+  await page.goto("/ticker");
+  const year = page.getByRole("region", { name: "2026 against the goal" });
+  await expect(year).toContainText("2026 so far: 22,6 mill. kr");
+  await expect(year).toContainText("of 78 mill. kr");
+  const small = year.getByRole("progressbar", { name: "Gifts under 100 000 kr" });
+  await expect(small).toHaveAttribute("aria-valuetext", "14,8 mill. kr of 28 mill. kr");
+  const large = year.getByRole("progressbar", { name: "Gifts of 100 000 kr or more" });
+  await expect(large).toHaveAttribute("aria-valuetext", "7,8 mill. kr of 50 mill. kr");
+  // The bars fill to their share of the goal: 53 % and 16 %
+  const width = (bar: typeof small) =>
+    bar.locator("[data-slot=ticker-bar]").evaluate((el) => (el as HTMLElement).style.width);
+  await expect.poll(() => width(small)).toMatch(/^52\.7/);
+  await expect.poll(() => width(large)).toMatch(/^15\.6/);
+});
+
+test("the office screen shows just the year so far without a goal", async ({ page }) => {
+  await stubAnalysisApi(page, {
+    overrides: {
+      "analysis.ticker": () => ({
+        sum: "170245588",
+        estimate: null,
+        year: { ...tickerYearFixture, year: 2031, goal: null },
+      }),
+    },
+  });
+  await page.goto("/ticker");
+  await expect(page.getByText("2031 so far: 22,6 mill. kr")).toBeVisible();
+  await expect(page.getByRole("progressbar")).toHaveCount(0);
 });
 
 test("the overview links to the office screen", async ({ page }) => {
