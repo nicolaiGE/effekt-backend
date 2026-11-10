@@ -973,7 +973,7 @@ export async function sendAgreementInflationAdjustment(
 }
 
 /**
- * Type for donor data from getDonorsEligableForDeductionInYear
+ * A recipient of the missing tax unit notice (noticeRecipients in missingTaxUnitNotices.ts)
  */
 export type EligibleDonor = {
   donationsSum: number;

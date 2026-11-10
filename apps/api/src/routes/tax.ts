@@ -77,17 +77,32 @@ router.post("/skatteetaten/xmlreport", authMiddleware.isAdmin, async (req, res, 
       throw new Error("Missing contact information");
     }
 
-    const xmlDoc = await createXMLReportToTaxAuthorities(
-      2025,
-      500,
+    const year = parseInt(req.body.year, 10);
+    if (!Number.isFinite(year) || year < 2000 || year > 2100) {
+      res.status(400).json({ status: 400, content: "Missing or invalid year" });
+      return;
+    }
+
+    const minSum = Number(req.body.minSum);
+    if (req.body.minSum === undefined || !Number.isFinite(minSum) || minSum < 0) {
+      res.status(400).json({ status: 400, content: "Missing or invalid minSum" });
+      return;
+    }
+
+    const result = await createXMLReportToTaxAuthorities(
+      year,
+      minSum,
       report.data,
       contactInformation,
     );
 
-    console.log("SENDING");
+    if (!result.ok) {
+      res.status(400).json({ status: 400, content: result.errors });
+      return;
+    }
 
     res.set("Content-Type", "application/xml");
-    res.send(xmlDoc.toString());
+    res.send(result.xml);
   } catch (ex) {
     next(ex);
   }

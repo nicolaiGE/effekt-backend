@@ -4,6 +4,7 @@ import { DAO } from "../DAO";
 import { getTaxUnitsWithDeductions } from "../taxdeductions";
 import { Distributions, Tax_unit } from "@prisma/client";
 import { RequestLocale } from "../../middleware/locale";
+import { type InstantRange, instantRangeClauses, osloYearRange } from "../osloDays";
 
 //region Get
 /**
@@ -177,73 +178,51 @@ async function getReportsWithUserOnProfilePage(): Promise<EmailTaxUnitReport[]> 
   return mapped;
 }
 
-async function getDonorsEligableForDeductionInYear(
-  year: number,
-  minSum: number,
-  excludedEmails: string[],
-) {
-  const [result] = await DAO.query<
-    {
-      donationsSum: number;
-      email: string;
-      full_name: string;
-      unitCount: number;
-    }[]
-  >(
-    `
-    SELECT 
-      SUM(sum_confirmed) as donationsSum,
-      Donors.email,
-      Donors.full_name,
-      (SELECT COUNT(*) FROM Tax_unit WHERE Donor_ID = Donors.ID) as unitCount
-    
-  
-    FROM Donations as D
-      
-    INNER JOIN Distributions as DI
-      ON DI.KID = D.KID_fordeling
-    INNER JOIN Donors
-      ON Donors.ID = D.Donor_ID
-      
-    WHERE 
-      DI.Tax_unit_ID IS NULL
-      AND YEAR (D.timestamp_confirmed) = ?
-      AND (Donors.trash = 0 OR Donors.trash IS NULL)
-      AND (Donors.email NOT LIKE '%auksjon%')
-      AND (Donors.email NOT LIKE '%gieffektivt.no')
-      AND (Donors.email NOT LIKE '%gieffektiv.no')
-      AND (Donors.email NOT IN (?))
-      AND (SELECT COUNT(*) FROM Tax_unit WHERE Donor_ID = Donors.ID) = 0
-      
-    GROUP BY
-      Donors.email,
-      Donors.full_name
-      
-      HAVING SUM(sum_confirmed) >= ?
-      
-      ORDER BY SUM(sum_confirmed) DESC
-  `,
-    [year, excludedEmails, minSum],
-  );
+/** The last gift year reported with UTC years (`YEAR(timestamp_confirmed)`), before Oslo time */
+export const LAST_UTC_TAX_YEAR = 2025;
 
-  return result;
+/**
+ * The donations that belong to a gift year in the report to Skatteetaten. Years up to
+ * LAST_UTC_TAX_YEAR were reported with UTC years, and those reports are filed: they keep UTC years,
+ * so they come out as filed. The year after starts where the last UTC year ended (1 January 00:00
+ * UTC), so gifts in the first hour of the year in Oslo, already reported for the year before, are
+ * not reported again. From then on the years follow Oslo time.
+ */
+export function taxYearRange(year: number): Required<InstantRange> {
+  const utcYearStart = (y: number) => new Date(Date.UTC(y, 0, 1));
+  if (year <= LAST_UTC_TAX_YEAR)
+    return { from: utcYearStart(year), before: utcYearStart(year + 1) };
+  const oslo = osloYearRange(year);
+  return year === LAST_UTC_TAX_YEAR + 1 ? { from: utcYearStart(year), before: oslo.before } : oslo;
 }
 
-async function getTaxXMLReportUnits(year: number) {
-  const [result] = await DAO.query<
-    {
-      donationsSum: string;
-      ssn: string;
-      full_name: string;
-      donorId: number;
-    }[]
-  >(
+/** Donations.timestamp_confirmed within the gift year (taxYearRange), as SQL clauses */
+const confirmedInTaxYear = (year: number) =>
+  instantRangeClauses("D.timestamp_confirmed", taxYearRange(year)).join(" AND ");
+
+export type TaxUnitYearSum = {
+  taxUnitId: number;
+  donorId: number;
+  ssn: string | null;
+  name: string;
+  /** Decimal string, e.g. "1234.50" */
+  donationsSum: string;
+};
+
+/**
+ * Donations confirmed in the gift year (taxYearRange) summed per tax unit. One row per tax unit: several
+ * units can share a national ID (one person registered on several donors), so callers group them
+ * by number (groupTaxUnitsBySsn) before reporting.
+ */
+async function getTaxXMLReportUnits(year: number): Promise<TaxUnitYearSum[]> {
+  const [result] = await DAO.query<(TaxUnitYearSum & RowDataPacket)[]>(
     `
     SELECT 
-      SUM(sum_confirmed) as donationsSum,
+      Tax_unit.ID as taxUnitId,
+      Tax_unit.Donor_ID as donorId,
       Tax_unit.ssn,
-      Tax_unit.full_name,
-      Tax_unit.Donor_ID as donorId
+      Tax_unit.full_name as name,
+      SUM(D.sum_confirmed) as donationsSum
 
       FROM Donations as D
 
@@ -253,21 +232,123 @@ async function getTaxXMLReportUnits(year: number) {
       INNER JOIN Tax_unit
         ON Tax_unit.ID = DI.Tax_unit_ID
 
-      WHERE 
-        DI.Tax_unit_ID IS NOT NULL
-        AND YEAR (D.timestamp_confirmed) = ?
+      WHERE ${confirmedInTaxYear(year)}
 
-      GROUP BY
-        Tax_unit.ssn,
-        Tax_unit.full_name,
-        Tax_unit.Donor_ID
+      GROUP BY Tax_unit.ID
         
-      ORDER BY SUM(sum_confirmed) DESC
+      ORDER BY SUM(D.sum_confirmed) DESC
   `,
-    [year],
   );
 
-  return result;
+  return result.map((row) => ({
+    taxUnitId: row.taxUnitId,
+    donorId: row.donorId,
+    ssn: row.ssn,
+    name: row.name,
+    donationsSum: String(row.donationsSum),
+  }));
+}
+
+/**
+ * All donations confirmed in the gift year (taxYearRange), and the part on distributions without a tax
+ * unit. The rest is exactly what getTaxXMLReportUnits sums, so the two can be checked against
+ * each other.
+ */
+async function getDonationTotalsInYear(
+  year: number,
+): Promise<{ total: string; withoutTaxUnit: string; donations: number }> {
+  const [[row]] = await DAO.query<RowDataPacket[]>(
+    `
+    SELECT
+      COALESCE(SUM(D.sum_confirmed), 0) as total,
+      COALESCE(SUM(CASE WHEN TU.ID IS NULL THEN D.sum_confirmed ELSE 0 END), 0) as withoutTaxUnit,
+      COUNT(*) as donations
+
+      FROM Donations as D
+
+      LEFT JOIN Distributions as DI
+        ON DI.KID = D.KID_fordeling
+
+      LEFT JOIN Tax_unit as TU
+        ON TU.ID = DI.Tax_unit_ID
+
+      WHERE ${confirmedInTaxYear(year)}
+  `,
+  );
+  return {
+    total: String(row.total),
+    withoutTaxUnit: String(row.withoutTaxUnit),
+    donations: Number(row.donations),
+  };
+}
+
+export type DonorWithoutTaxUnitRow = {
+  donorId: number;
+  email: string | null;
+  name: string | null;
+  trashed: boolean;
+  /** Decimal string: the donor's donations in the year on distributions without a tax unit */
+  donationsSum: string;
+  /** Decimal string: the part given through fundraisers (innsamlingsaksjoner) */
+  fundraiserSum: string;
+  donations: number;
+  /** Tax units the donor has registered (on other distributions, or added since) */
+  taxUnits: number;
+};
+
+/**
+ * Donors whose donations without a tax unit in the gift year (taxYearRange) add up to at least minSum.
+ * Who of them gets the missing tax unit notice is decided by classifyDonorsWithoutTaxUnit.
+ */
+async function getDonorsWithoutTaxUnitInYear(
+  year: number,
+  minSum: number,
+): Promise<DonorWithoutTaxUnitRow[]> {
+  const [result] = await DAO.query<RowDataPacket[]>(
+    `
+    SELECT
+      D.Donor_ID as donorId,
+      ANY_VALUE(Donors.email) as email,
+      ANY_VALUE(Donors.full_name) as name,
+      ANY_VALUE(Donors.trash) as trash,
+      SUM(D.sum_confirmed) as donationsSum,
+      SUM(CASE WHEN DI.Fundraiser_transaction_ID IS NOT NULL THEN D.sum_confirmed ELSE 0 END)
+        as fundraiserSum,
+      COUNT(*) as donations,
+      (SELECT COUNT(*) FROM Tax_unit WHERE Tax_unit.Donor_ID = D.Donor_ID) as taxUnits
+
+      FROM Donations as D
+
+      INNER JOIN Donors
+        ON Donors.ID = D.Donor_ID
+
+      LEFT JOIN Distributions as DI
+        ON DI.KID = D.KID_fordeling
+
+      LEFT JOIN Tax_unit as TU
+        ON TU.ID = DI.Tax_unit_ID
+
+      WHERE TU.ID IS NULL
+        AND ${confirmedInTaxYear(year)}
+
+      GROUP BY D.Donor_ID
+
+      HAVING SUM(D.sum_confirmed) >= ?
+
+      ORDER BY SUM(D.sum_confirmed) DESC
+  `,
+    [minSum],
+  );
+  return result.map((row) => ({
+    donorId: row.donorId,
+    email: row.email ?? null,
+    name: row.name ?? null,
+    trashed: Number(row.trash) === 1,
+    donationsSum: String(row.donationsSum),
+    fundraiserSum: String(row.fundraiserSum),
+    donations: Number(row.donations),
+    taxUnits: Number(row.taxUnits),
+  }));
 }
 //endregion
 
@@ -325,7 +406,8 @@ export const tax = {
   getActiveTaxUnitIdsByDonorId,
   getReportsWithUserOnProfilePage,
   getTaxXMLReportUnits,
-  getDonorsEligableForDeductionInYear,
+  getDonationTotalsInYear,
+  getDonorsWithoutTaxUnitInYear,
   addTaxUnit,
   updateTaxUnit,
   deleteById,

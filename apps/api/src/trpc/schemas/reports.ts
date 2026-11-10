@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { noticeOptionsProblem } from "../../custom_modules/missingTaxUnitNoticeOptions";
 import { TRPC_MAX_BODY_SIZE } from "../reportsMultipart";
 import {
   reviewQueueSources,
@@ -92,6 +93,46 @@ export const ku65Input = formDataInput({
     .transform(Number)
     .pipe(z.number().int().min(2000, "Invalid year").max(2100, "Invalid year")),
 });
+
+/** Tax deduction report (Skatteetaten): the gift year and the minimum per tax unit */
+const taxYear = z.number().int().min(2000, "Invalid year").max(2100, "Invalid year");
+const taxMinSum = z.number().int().min(0).max(1_000_000);
+
+export const taxOverviewInput = z.strictObject({ year: taxYear, minSum: taxMinSum });
+
+const requiredText = (label: string, max = 100) =>
+  z.string().trim().min(1, `${label} is required`).max(max, `${label} is too long`);
+
+export const skatteetatenXmlInput = formDataInput({
+  report: reportFile.refine(isCsv, "Invalid file type, must be CSV"),
+  year: z
+    .string()
+    .regex(/^\d{4}$/, "Invalid year")
+    .transform(Number)
+    .pipe(taxYear),
+  minSum: z.string().regex(/^\d+$/, "Invalid minimum").transform(Number).pipe(taxMinSum),
+  name: requiredText("Name"),
+  email: z.email("Enter a valid email address").max(100),
+  // Skatteetaten's schema allows at most 20 characters
+  phoneNumber: requiredText("Phone number", 20),
+  smsNumber: requiredText("SMS number", 20),
+});
+
+export const missingTaxUnitNoticeInput = z
+  .strictObject({
+    year: taxYear,
+    minSum: taxMinSum.min(1),
+    /** Test mode: every notice goes to this address */
+    testEmail: z.email().max(255).optional(),
+    /** Test mode: only the first donors (with testEmail) */
+    testLimit: z.number().int().min(1).max(100).optional(),
+    /** Sending to the donors themselves: the year again, as typed in the confirmation */
+    confirmYear: taxYear.optional(),
+  })
+  .superRefine((input, ctx) => {
+    const problem = noticeOptionsProblem(input);
+    if (problem) ctx.addIssue({ code: "custom", message: problem, path: ["confirmYear"] });
+  });
 
 //endregion
 

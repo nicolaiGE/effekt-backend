@@ -1,11 +1,11 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { DownloadIcon } from "lucide-react";
 import { useState } from "react";
 import { Callout } from "@/components/domain/callout";
 import { describeError, ErrorState } from "@/components/domain/error-state";
 import { Money, Num } from "@/components/domain/format";
-import { SettingsPage, SettingsSection } from "@/components/templates";
+import { SettingsPage, SettingsSection, useScrollTopOn } from "@/components/templates";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DateRangePicker, type DateRange } from "@/components/ui/date-range-picker";
@@ -15,6 +15,7 @@ import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Pending } from "@/components/ui/pending";
 import { visiblePaymentMethods } from "@/features/donations/api";
 import { isoDay } from "@/features/home/model";
+import { TaxDeductionReport } from "@/features/reports/tax-deduction";
 import {
   transactionCsvRows,
   transactionRangeInput,
@@ -24,22 +25,37 @@ import { downloadFile, toCsv } from "@/lib/download";
 import { formatDate } from "@/lib/format";
 import { useTRPC } from "@/lib/trpc";
 
-const sections = [{ id: "transactions", label: "Transaction report" }];
+const sections = [
+  { id: "transactions", label: "Transaction report" },
+  { id: "tax-deduction", label: "Tax deduction" },
+];
+type SectionId = "transactions" | "tax-deduction";
 
 export const Route = createFileRoute("/_app/reports")({
+  validateSearch: (search: Record<string, unknown>): { section?: SectionId } =>
+    search.section === "tax-deduction" ? { section: "tax-deduction" } : {},
   component: ReportsPage,
 });
 
 function ReportsPage() {
+  const { section = "transactions" } = Route.useSearch();
+  const navigate = useNavigate({ from: Route.fullPath });
+  useScrollTopOn(section);
   return (
     <SettingsPage
       title="Reports"
-      description="Files for accounting."
+      description="Files for accounting and Skatteetaten."
       nav={sections}
-      value="transactions"
-      onValueChange={() => {}}
+      value={section}
+      onValueChange={(id) =>
+        void navigate({
+          search: id === "transactions" ? {} : { section: id as SectionId },
+          replace: true,
+        })
+      }
     >
-      <TransactionReport />
+      {section === "transactions" && <TransactionReport />}
+      {section === "tax-deduction" && <TaxDeductionReport />}
     </SettingsPage>
   );
 }
