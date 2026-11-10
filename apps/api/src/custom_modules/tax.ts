@@ -9,6 +9,7 @@ import {
   classifyDonorsWithoutTaxUnit,
   noticeExclusionLabels,
   type NoticeExclusion,
+  type NoticeStatus,
 } from "./missingTaxUnitNotices";
 import { checkNorwegianId, describeNorwegianIdProblem, maskIdNumbers } from "./norwegianId";
 import { norwegianTaxDeductionLimits } from "./taxdeductions";
@@ -150,17 +151,28 @@ export type TaxReportOverview = {
   };
   /**
    * Donors with at least minSum in the year on distributions without a tax unit, and whether
-   * they get the missing tax unit notice (exclusion null) or why not. No email addresses.
+   * they get the missing tax unit notice, are left out (and why) or have been sent it. Names, no
+   * email addresses.
    */
   withoutTaxUnit: {
     donorId: number;
+    name: string | null;
     donationsSum: string;
     fundraiserSum: string;
     donations: number;
     taxUnits: number;
     exclusion: NoticeExclusion | null;
     exclusionLabel: string | null;
+    status: NoticeStatus;
+    /** Who sent the notice or left the donor out by hand, and when */
+    statusBy: string | null;
+    statusAt: Date | null;
   }[];
+  /**
+   * Donors sent the notice for the year who are no longer in withoutTaxUnit: they have since
+   * registered a tax unit (or their gifts moved onto one)
+   */
+  sentNoLongerWithout: number;
   /** Possible duplicates, without the number */
   duplicates: {
     reason: "sameNumber" | "severalUnits";
@@ -187,11 +199,13 @@ export async function getTaxReportOverview(
   year: number,
   minSum: number,
 ): Promise<TaxReportOverview> {
-  const [rows, totals, withoutTaxUnit] = await Promise.all([
+  const [rows, totals, withoutTaxUnit, notices] = await Promise.all([
     DAO.tax.getTaxXMLReportUnits(year),
     DAO.tax.getDonationTotalsInYear(year),
     DAO.tax.getDonorsWithoutTaxUnitInYear(year, minSum),
+    DAO.taxunitnotices.getForYear(year),
   ]);
+  const stillWithout = new Set(withoutTaxUnit.map((row) => row.donorId));
   const units = groupTaxUnitsBySsn(rows);
   const maximumDeduction =
     norwegianTaxDeductionLimits[year]?.maximumDeductionLimit ?? DEFAULT_MAXIMUM_DEDUCTION;
@@ -261,15 +275,22 @@ export async function getTaxReportOverview(
       belowMinimumUnits: below.length,
       aboveMaximum: reported.filter((unit) => unit.sum.gt(maximumDeduction)).length,
     },
-    withoutTaxUnit: classifyDonorsWithoutTaxUnit(withoutTaxUnit, minSum).map((donor) => ({
+    withoutTaxUnit: classifyDonorsWithoutTaxUnit(withoutTaxUnit, minSum, notices).map((donor) => ({
       donorId: donor.donorId,
+      name: donor.name,
       donationsSum: donor.donationsSum,
       fundraiserSum: donor.fundraiserSum,
       donations: donor.donations,
       taxUnits: donor.taxUnits,
       exclusion: donor.exclusion,
       exclusionLabel: donor.exclusion ? noticeExclusionLabels[donor.exclusion] : null,
+      status: donor.status,
+      statusBy: donor.statusBy,
+      statusAt: donor.statusAt,
     })),
+    sentNoLongerWithout: notices.filter(
+      (notice) => notice.status === "sent" && !stillWithout.has(notice.donorId),
+    ).length,
     duplicates,
     invalidNumbers,
   };

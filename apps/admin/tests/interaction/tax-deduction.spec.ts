@@ -29,23 +29,58 @@ const overview = (year: number, difference = "0.00") => ({
   withoutTaxUnit: [
     {
       donorId: 20,
+      name: "Test Giver",
       donationsSum: "1000.30",
       fundraiserSum: "0.00",
       donations: 3,
       taxUnits: 0,
       exclusion: null,
       exclusionLabel: null,
+      status: "notice",
+      statusBy: null,
+      statusAt: null,
     },
     {
       donorId: 1464,
+      name: "Anonym giver",
       donationsSum: "90000.00",
       fundraiserSum: "85000.00",
       donations: 400,
       taxUnits: 0,
       exclusion: "anonymous",
       exclusionLabel: "Anonymous donor",
+      status: "excluded",
+      statusBy: null,
+      statusAt: null,
+    },
+    {
+      donorId: 30,
+      name: "Linjeforening Testinnsamling",
+      donationsSum: "4000.00",
+      fundraiserSum: "4000.00",
+      donations: 12,
+      taxUnits: 0,
+      exclusion: "leftOut",
+      exclusionLabel: "Left out by hand",
+      status: "excluded",
+      statusBy: "admin@example.org",
+      statusAt: "2026-11-10T09:00:00.000Z",
+    },
+    {
+      donorId: 40,
+      name: "Sendt Testesen",
+      donationsSum: "700.00",
+      fundraiserSum: "0.00",
+      donations: 1,
+      taxUnits: 0,
+      exclusion: null,
+      exclusionLabel: null,
+      status: "sent",
+      statusBy: "admin@example.org",
+      statusAt: "2026-11-10T09:00:00.000Z",
     },
   ],
+  sentNoLongerWithout: 2,
   duplicates: [{ reason: "sameNumber", donorIds: [10, 11], taxUnitIds: [1, 2], sum: "500.10" }],
   invalidNumbers: [
     {
@@ -58,7 +93,7 @@ const overview = (year: number, difference = "0.00") => ({
   ],
 });
 
-type Calls = { overview: unknown[]; notice: unknown[] };
+type Calls = { overview: unknown[]; notice: unknown[]; status?: unknown[] };
 
 async function open(page: Page, calls: Calls, xmlResult: unknown) {
   await stubAnalysisApi(page, {
@@ -70,7 +105,11 @@ async function open(page: Page, calls: Calls, xmlResult: unknown) {
       },
       "reports.tax.missingTaxUnitNotice": (input) => {
         calls.notice.push(input);
-        return { total: 2, success: 2, failed: 0, testMode: true };
+        return { total: 2, success: 2, failed: 0, testMode: true, donorsMarkedSent: 0 };
+      },
+      "reports.tax.noticeStatus": (input) => {
+        (calls.status ??= []).push(input);
+        return { changed: (input as { donorIds: number[] }).donorIds.length };
       },
       "reports.tax.skatteetaten": () => xmlResult,
     },
@@ -96,12 +135,23 @@ test("tax deduction: control figures, deviation lists without national IDs, year
   // Only the donors who get the notice by default; the left-out ones say why
   const without = page.getByRole("table", { name: "Donors without tax unit" });
   await expect(without.getByRole("link", { name: "#20" })).toHaveAttribute("href", "/donors/20");
+  await expect(without).toContainText("Test Giver");
   await expect(without.getByRole("link", { name: "#1464" })).toHaveCount(0);
-  await page.getByRole("radio", { name: "Left out (1)" }).click();
-  await expect(without.getByRole("row").nth(1)).toContainText("Anonymous donor");
-  await expect(without.getByRole("row").nth(1)).toContainText("85 000,00 kr");
-  await page.getByRole("radio", { name: "All (2)" }).click();
-  await expect(without.getByRole("row")).toHaveCount(3);
+  await page.getByRole("radio", { name: "Left out (2)" }).click();
+  await expect(without.getByRole("row", { name: /#1464/ })).toContainText("Anonymous donor");
+  await expect(without.getByRole("row", { name: /#1464/ })).toContainText("85 000,00 kr");
+  await expect(without.getByRole("row", { name: /#30/ })).toContainText("Left out by hand");
+  await page.getByRole("radio", { name: "Sent (1)" }).click();
+  await expect(without.getByRole("row", { name: /#40/ })).toContainText("admin@example.org");
+  await expect(page.getByText("2 more donors who got the notice have since")).toBeVisible();
+  await page.getByRole("radio", { name: "All (4)" }).click();
+  await expect(without.getByRole("row")).toHaveCount(5);
+  // Search by name or donor ID
+  await page.getByLabel("Search donors").fill("linjeforening");
+  await expect(without.getByRole("row")).toHaveCount(2);
+  await page.getByLabel("Search donors").fill("#40");
+  await expect(without.getByRole("row", { name: /#40/ })).toBeVisible();
+  await page.getByLabel("Search donors").fill("");
   const duplicates = page.getByRole("table", { name: "Possible duplicate donors" });
   await expect(duplicates.getByRole("link", { name: "#10" })).toBeVisible();
   await expect(duplicates.getByRole("link", { name: "#11" })).toBeVisible();
@@ -111,6 +161,12 @@ test("tax deduction: control figures, deviation lists without national IDs, year
   await expect(page.getByText("Invalid numbers will stop the file")).toBeVisible();
   // No 9- or 11-digit numbers anywhere on the page
   expect(await page.locator("main").innerText()).not.toMatch(/\b\d{9}(\d{2})?\b/);
+
+  // The running year can be chosen too, while it runs
+  await page.getByLabel("Gift year").click();
+  await page.getByRole("option", { name: String(lastYear + 1) }).click();
+  await expect.poll(() => calls.overview.at(-1)).toEqual({ year: lastYear + 1, minSum: 500 });
+  await expect(page.getByText("The year isn't over")).toBeVisible();
 
   // Another year asks again; a difference is called out
   await page.getByLabel("Gift year").click();
@@ -154,6 +210,32 @@ test("tax deduction: the missing tax unit notice in test mode goes to the test a
   await expect
     .poll(() => calls.notice[1])
     .toEqual({ year: lastYear, minSum: 500, confirmYear: lastYear });
+});
+
+test("tax deduction: ticked donors move to Left out and back", async ({ page }) => {
+  const calls: Calls = { overview: [], notice: [] };
+  await open(page, calls, null);
+  const without = page.getByRole("table", { name: "Donors without tax unit" });
+
+  await without.getByRole("row", { name: /#20/ }).getByRole("checkbox").click();
+  await page.getByRole("button", { name: "Move to Left out" }).click();
+  await expect
+    .poll(() => calls.status?.[0])
+    .toEqual({ year: lastYear, donorIds: [20], status: "excluded" });
+  await expect(page.getByText("Moved 1 donor to Left out")).toBeVisible();
+
+  // Only those left out by hand go back; the rules' own exclusions stay
+  await page.getByRole("radio", { name: "Left out (2)" }).click();
+  await without.getByRole("checkbox", { name: /select all/i }).click();
+  await expect(page.getByText("1 donor left out by the rules can't be moved back")).toBeVisible();
+  await page.getByRole("button", { name: "Move back to Gets the notice" }).click();
+  await expect
+    .poll(() => calls.status?.[1])
+    .toEqual({ year: lastYear, donorIds: [30], status: "notice" });
+
+  // Sent donors can't be ticked
+  await page.getByRole("radio", { name: "Sent (1)" }).click();
+  await expect(without.getByRole("checkbox")).toHaveCount(0);
 });
 
 test("tax deduction: the XML needs contact details and the CSV, shows errors and downloads", async ({

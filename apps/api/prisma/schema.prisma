@@ -364,6 +364,7 @@ model Donors {
   Adoveo_giftcard_transactions_sender   Adoveo_giftcard_transactions[] @relation(name: "senderDonor")
   Adoveo_giftcard_transactions_receiver Adoveo_giftcard_transactions[] @relation(name: "receiverDonor")
   Fundraisers                           Fundraisers[]
+  Tax_unit_notices                      Tax_unit_notices[]
 
   @@index([full_name(length: 63)], map: "full_name")
   @@index([email(length: 63), full_name(length: 63)], map: "search")
@@ -730,6 +731,21 @@ model Tax_unit {
   Donors Donors @relation(fields: [Donor_ID], references: [ID], onDelete: Cascade, map: "FK_tax_unit_donor_id")
 
   @@index([Donor_ID], map: "FK_tax_unit_donor_id_idx")
+}
+
+/// The missing tax unit notice per donor and gift year (Reports › Tax deduction)
+model Tax_unit_notices {
+  ID         Int      @id @default(autoincrement())
+  Donor_ID   Int
+  Year       Int /// Gift year the notice is about
+  Status     String   @db.VarChar(16) /// excluded (left out by an admin) | sent
+  Updated_by String   @db.VarChar(255) /// Admin (JWT email or sub) who left the donor out or sent it
+  Updated    DateTime @default(now()) @db.DateTime(0)
+
+  Donors Donors @relation(fields: [Donor_ID], references: [ID], onDelete: Cascade, onUpdate: Cascade, map: "fk_Tax_unit_notices_to_Donors")
+
+  @@unique([Donor_ID, Year], map: "Donor_ID_Year_UNIQUE")
+  @@index([Year, Status], map: "Year_Status_idx")
 }
 
 model Vipps_agreement_charges {

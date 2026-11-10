@@ -118,6 +118,13 @@ export const skatteetatenXmlInput = formDataInput({
   smsNumber: requiredText("SMS number", 20),
 });
 
+/** Moves donors to "Left out" (excluded) or back to "Gets the notice" for the year */
+export const taxNoticeStatusInput = z.strictObject({
+  year: taxYear,
+  donorIds: z.array(z.number().int().positive()).min(1).max(5000),
+  status: z.enum(["excluded", "notice"]),
+});
+
 export const missingTaxUnitNoticeInput = z
   .strictObject({
     year: taxYear,

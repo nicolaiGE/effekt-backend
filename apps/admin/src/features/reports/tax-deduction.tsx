@@ -2,11 +2,18 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { DownloadIcon, MailIcon } from "lucide-react";
 import { useState, type ReactNode } from "react";
+import {
+  cellPlaceholder,
+  createColumns,
+  DataTable,
+  type RowSelectionState,
+} from "@/components/data-table";
 import { Callout } from "@/components/domain/callout";
 import { ConfirmDialog } from "@/components/domain/confirm-dialog";
+import { EmptyState } from "@/components/domain/empty-state";
 import { describeError, ErrorState } from "@/components/domain/error-state";
 import { FileDropzone } from "@/components/domain/file-dropzone";
-import { Money, Num } from "@/components/domain/format";
+import { DateTime, Money, Num } from "@/components/domain/format";
 import { Stat, StatGroup } from "@/components/domain/stat";
 import { SettingsSection } from "@/components/templates";
 import { Button } from "@/components/ui/button";
@@ -32,6 +39,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { downloadFile } from "@/lib/download";
+import { notify } from "@/lib/notify";
 import { sumMoney } from "@/lib/money";
 import { usePersistentState } from "@/lib/persistent-store";
 import { usePageQuery } from "@/lib/query";
@@ -70,6 +78,7 @@ function DonorLinks({ ids }: { ids: number[] }) {
 export function TaxDeductionReport() {
   const trpc = useTRPC();
   const [year, setYear] = useState(() => defaultTaxYear());
+  const [thisYear] = useState(() => new Date().getFullYear());
   const overview = usePageQuery(
     trpc.reports.tax.overview.queryOptions({ year, minSum: TAX_MIN_SUM }),
   );
@@ -103,6 +112,11 @@ export function TaxDeductionReport() {
               ))}
             </SelectContent>
           </Select>
+          {year === thisYear && (
+            <p className="text-sm text-muted-foreground">
+              The year isn't over: the figures change as gifts come in.
+            </p>
+          )}
         </div>
       </SettingsSection>
 
@@ -283,14 +297,89 @@ function ListTable({
   );
 }
 
-type NoticeFilter = "notice" | "excluded" | "all";
+type NoticeFilter = "notice" | "excluded" | "sent" | "all";
+type WithoutRow = Overview["withoutTaxUnit"][number];
+
+const count = (n: number) => n.toLocaleString("nb-NO");
+
+const whoAndWhen = (row: WithoutRow) =>
+  row.statusAt ? (
+    <>
+      <DateTime value={row.statusAt} format="date" />
+      {row.statusBy ? `, ${row.statusBy}` : ""}
+    </>
+  ) : null;
+
+const withoutCol = createColumns<WithoutRow>();
+const withoutColumns = withoutCol.columns([
+  withoutCol.accessor("donorId", {
+    header: "Donor",
+    meta: { cellClassName: "max-w-72", placeholder: cellPlaceholder.name },
+    cell: ({ row }) => (
+      <span className="flex min-w-0 items-baseline gap-2">
+        <DonorLinks ids={[row.original.donorId]} />
+        <span className="truncate">
+          {row.original.name || <span className="text-faint-foreground">No name</span>}
+        </span>
+      </span>
+    ),
+  }),
+  withoutCol.accessor((row) => Number(row.donationsSum), {
+    id: "donationsSum",
+    header: "Without tax unit",
+    meta: { numeric: true, placeholder: cellPlaceholder.money },
+    cell: ({ row }) => <Money value={row.original.donationsSum} />,
+  }),
+  withoutCol.accessor((row) => Number(row.fundraiserSum), {
+    id: "fundraiserSum",
+    header: "Of which fundraisers",
+    meta: { numeric: true, cellClassName: "text-muted-foreground" },
+    cell: ({ row }) =>
+      row.original.fundraiserSum === "0.00" ? "–" : <Money value={row.original.fundraiserSum} />,
+  }),
+  withoutCol.accessor("donations", {
+    header: "Donations",
+    meta: { numeric: true, placeholder: cellPlaceholder.count },
+  }),
+  withoutCol.accessor("status", {
+    header: "Notice",
+    enableSorting: false,
+    cell: ({ row }) => {
+      const donor = row.original;
+      if (donor.status === "sent") return <span>Sent {whoAndWhen(donor)}</span>;
+      if (donor.status === "notice") return "Gets it";
+      return (
+        <span className="text-muted-foreground">
+          {donor.exclusionLabel}
+          {donor.exclusion === "leftOut" && <> ({whoAndWhen(donor)})</>}
+        </span>
+      );
+    },
+  }),
+]);
+
+/** Name or donor ID, for finding e.g. a student association's fundraiser in a long list */
+const matches = (row: WithoutRow, search: string) => {
+  const term = search.trim().toLowerCase();
+  if (!term) return true;
+  return (
+    String(row.donorId) === term.replace(/^#/, "") || (row.name ?? "").toLowerCase().includes(term)
+  );
+};
 
 function WithoutTaxUnit({ overview }: { overview: Overview }) {
   const [filter, setFilter] = useState<NoticeFilter>("notice");
+  const [search, setSearch] = useState("");
+  const [selection, setSelection] = useState<RowSelectionState>({});
   const all = overview.withoutTaxUnit;
-  const recipients = all.filter((row) => row.exclusion === null);
-  const excluded = all.filter((row) => row.exclusion !== null);
-  const rows = filter === "notice" ? recipients : filter === "excluded" ? excluded : all;
+  const byStatus = {
+    notice: all.filter((row) => row.status === "notice"),
+    excluded: all.filter((row) => row.status === "excluded"),
+    sent: all.filter((row) => row.status === "sent"),
+    all,
+  };
+  const rows = byStatus[filter].filter((row) => matches(row, search));
+  const selectable = filter === "notice" || filter === "excluded";
   const min = <Money value={String(overview.minSum)} precision="whole" />;
   return (
     <SettingsSection
@@ -307,13 +396,18 @@ function WithoutTaxUnit({ overview }: { overview: Overview }) {
             hand). Fundraiser gifts count towards {min}: a tax unit the donor registers covers them
             too.
           </p>
+          <p className="mt-2">
+            Tick donors and move them to “Left out” to skip them, for example a student
+            association's fundraiser. Donors who get the notice move to “Sent”, so a later round
+            only goes to the rest. Both are saved for everyone.
+          </p>
         </>
       }
       actions={
         <MissingTaxUnitNotice
           year={overview.year}
           minSum={overview.minSum}
-          recipients={recipients.length}
+          recipients={byStatus.notice.length}
         />
       }
     >
@@ -321,54 +415,122 @@ function WithoutTaxUnit({ overview }: { overview: Overview }) {
         <SegmentedControl
           label="Show donors"
           value={filter}
-          onValueChange={setFilter}
+          onValueChange={(next) => {
+            setFilter(next);
+            setSelection({});
+          }}
           options={[
-            {
-              value: "notice",
-              label: `Gets the notice (${recipients.length.toLocaleString("nb-NO")})`,
-            },
-            { value: "excluded", label: `Left out (${excluded.length.toLocaleString("nb-NO")})` },
-            { value: "all", label: `All (${all.length.toLocaleString("nb-NO")})` },
+            { value: "notice", label: `Gets the notice (${count(byStatus.notice.length)})` },
+            { value: "excluded", label: `Left out (${count(byStatus.excluded.length)})` },
+            { value: "sent", label: `Sent (${count(byStatus.sent.length)})` },
+            { value: "all", label: `All (${count(all.length)})` },
           ]}
         />
-        <p className="text-sm text-muted-foreground">
-          {plural(rows.length, "donor")},{" "}
-          <Money value={sumMoney(rows.map((row) => row.donationsSum))} /> without tax unit.
-        </p>
-        <ListTable
-          label="Donors without tax unit"
-          empty={filter === "excluded" ? "No donor is left out" : "No donor in this list"}
-          count={rows.length}
-          head={
-            <>
-              <TableHead>Donor</TableHead>
-              <TableHead className="text-right">Without tax unit</TableHead>
-              <TableHead className="text-right">Of which fundraisers</TableHead>
-              <TableHead className="text-right">Donations</TableHead>
-              <TableHead>Notice</TableHead>
-            </>
-          }
-        >
-          {rows.map((row) => (
-            <TableRow key={row.donorId}>
-              <TableCell>
-                <DonorLinks ids={[row.donorId]} />
-              </TableCell>
-              <TableCell className="text-right">
-                <Money value={row.donationsSum} />
-              </TableCell>
-              <TableCell className="text-right text-muted-foreground">
-                {row.fundraiserSum === "0.00" ? "–" : <Money value={row.fundraiserSum} />}
-              </TableCell>
-              <TableCell className="num text-right">{row.donations}</TableCell>
-              <TableCell className={row.exclusionLabel ? "text-muted-foreground" : undefined}>
-                {row.exclusionLabel ?? "Gets it"}
-              </TableCell>
-            </TableRow>
-          ))}
-        </ListTable>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          <Input
+            type="search"
+            aria-label="Search donors"
+            placeholder="Search name or donor ID"
+            className="max-w-xs"
+            value={search}
+            onChange={(event) => {
+              setSearch(event.target.value);
+              setSelection({});
+            }}
+          />
+          <p className="text-sm text-muted-foreground">
+            {plural(rows.length, "donor")},{" "}
+            <Money value={sumMoney(rows.map((row) => row.donationsSum))} /> without tax unit.
+          </p>
+        </div>
+        {filter === "sent" && overview.sentNoLongerWithout > 0 && (
+          <p className="text-sm text-muted-foreground">
+            {plural(overview.sentNoLongerWithout, "more donor")} who got the notice{" "}
+            {overview.sentNoLongerWithout === 1 ? "has" : "have"} since registered a tax unit and
+            {overview.sentNoLongerWithout === 1 ? " is" : " are"} no longer on the list.
+          </p>
+        )}
+        <div className="flex h-[28rem] flex-col">
+          <DataTable
+            label="Donors without tax unit"
+            columns={withoutColumns}
+            data={rows}
+            getRowId={(row) => String(row.donorId)}
+            {...(selectable && {
+              rowSelection: selection,
+              onRowSelectionChange: setSelection,
+              selectionActions: (ids: string[]) => (
+                <MoveNoticeStatus
+                  year={overview.year}
+                  rows={rows.filter((row) => ids.includes(String(row.donorId)))}
+                  to={filter === "notice" ? "excluded" : "notice"}
+                  onDone={() => setSelection({})}
+                />
+              ),
+            })}
+            empty={
+              <EmptyState
+                size="sm"
+                title={search.trim() ? "No donor matches the search" : "No donor in this list"}
+              />
+            }
+          />
+        </div>
       </div>
     </SettingsSection>
+  );
+}
+
+/**
+ * Footer action for the ticked donors: to "Left out", or back to "Gets the notice". Only donors
+ * left out by hand can go back; the rules' own exclusions stay.
+ */
+function MoveNoticeStatus({
+  year,
+  rows,
+  to,
+  onDone,
+}: {
+  year: number;
+  rows: WithoutRow[];
+  to: "excluded" | "notice";
+  onDone: () => void;
+}) {
+  const trpc = useTRPC();
+  const queryClient = useQueryClient();
+  const move = useMutation(trpc.reports.tax.noticeStatus.mutationOptions());
+  const movable = to === "excluded" ? rows : rows.filter((row) => row.exclusion === "leftOut");
+  const fixed = rows.length - movable.length;
+
+  return (
+    <div className="flex flex-wrap items-center gap-3">
+      {fixed > 0 && (
+        <span className="text-sm text-muted-foreground">
+          {plural(fixed, "donor")} left out by the rules can't be moved back
+        </span>
+      )}
+      <Button
+        size="sm"
+        disabled={movable.length === 0}
+        pending={move.isPending}
+        onClick={async () => {
+          const result = await move.mutateAsync({
+            year,
+            donorIds: movable.map((row) => row.donorId),
+            status: to,
+          });
+          await queryClient.invalidateQueries({ queryKey: trpc.reports.tax.overview.queryKey() });
+          notify.success(
+            to === "excluded"
+              ? `Moved ${plural(result.changed, "donor")} to Left out`
+              : `Moved ${plural(result.changed, "donor")} back to Gets the notice`,
+          );
+          onDone();
+        }}
+      >
+        {to === "excluded" ? "Move to Left out" : "Move back to Gets the notice"}
+      </Button>
+    </div>
   );
 }
 
@@ -477,6 +639,7 @@ function MissingTaxUnitNotice({
   recipients: number;
 }) {
   const trpc = useTRPC();
+  const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [testMode, setTestMode] = useState(true);
   const [testEmail, setTestEmail] = useState("");
@@ -512,10 +675,12 @@ function MissingTaxUnitNotice({
         consequences={
           testMode
             ? [
-                `The notices for the ${limit || "first"} largest donors go to the test address, not to the donors.`,
+                `The notices for the ${limit || "first"} largest donors in “Gets the notice” go to the test address, not to the donors.`,
+                "Nobody is moved to “Sent”.",
               ]
             : [
                 `${plural(recipients, "donor")} in “Gets the notice” get the email (one per address).`,
+                "Those it reaches move to “Sent”, so a later sending skips them.",
                 "It can't be undone. Sending takes about a second per ten donors.",
               ]
         }
@@ -531,6 +696,10 @@ function MissingTaxUnitNotice({
               ? { testEmail: testEmail.trim(), testLimit: limit }
               : { confirmYear: year }),
           });
+          if (!testMode)
+            await queryClient.invalidateQueries({
+              queryKey: trpc.reports.tax.overview.queryKey(),
+            });
         }}
       >
         <div className="grid gap-4">
@@ -572,6 +741,9 @@ function MissingTaxUnitNotice({
         >
           {plural(send.data.success, "email")} sent
           {send.data.failed > 0 ? `, ${send.data.failed} failed` : ""}, of {send.data.total}.
+          {!send.data.testMode &&
+            send.data.donorsMarkedSent > 0 &&
+            ` ${plural(send.data.donorsMarkedSent, "donor")} moved to Sent.`}
         </Callout>
       )}
     </>
