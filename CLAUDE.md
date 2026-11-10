@@ -41,6 +41,21 @@ Node 24 on PATH (`node -v`), not /opt/node22. For the website's full-stack e2e u
 the image's Chromium via `PW_CHROMIUM_PATH` (set by the hook). `pnpm cloud:shot /donors [out.png]`
 saves a signed-in screenshot of an admin page (default `/tmp/shot.png`).
 
+Outside the repo (details in docs/claude-cloud.md#reaching-services):
+
+- **GitHub Actions:** `gh run list --branch <branch>`, `gh run view <id> --log-failed`, `gh api`
+  (REST) work through Anthropic's GitHub proxy. `gh pr`/`gh issue` don't (GraphQL is blocked); use
+  the GitHub tools for PRs, or `gh api repos/stiftelsen-effekt/effekt-platform/issues/<n>/comments`
+  to read the preview comment.
+- **Websites:** Vercel previews (`*.vercel.app`) and gieffektivt.no / geeffektivt.se /
+  giveffektivt.dk are reachable with curl or Playwright: check your change on the preview.
+- **Sanity:** projects `vf0df6h3` (NO; datasets `production`, `dev`), `9reyurp9` (SE) and
+  `2k8sn9h2` (DK). Datasets are public, so published content can be queried without a token:
+  `curl -sG https://vf0df6h3.api.sanity.io/v2025-02-19/data/query/production --data-urlencode 'query=*[_type=="organization"]{name}'`.
+  Writes and drafts work where the environment has a Sanity token (added by the proxy; never
+  put a token in a command or file).
+- **Vercel build logs:** through the Vercel connector when it's enabled for the session.
+
 ## Rules
 
 - Only synthetic data. Never add secrets, real personal data or production configuration.
@@ -48,8 +63,9 @@ saves a signed-in screenshot of an admin page (default `/tmp/shot.png`).
   migrations of production data unless the request is explicitly about them.
 - Database changes are Prisma migrations in `apps/api/prisma/migrations`, plus seed data in
   `apps/api/prisma/devdata` (and `prisma/e2e` when e2e specs need it).
-- Website copy and pages mostly live in Sanity, not in code. Content changes go through Sanity's
-  dev dataset, never production.
+- Website copy and pages mostly live in Sanity, not in code. Read freely. Write to the `dev`
+  datasets as needed; in `production`, only create or edit **drafts** (`drafts.` ids) and never
+  publish or delete unless the person explicitly asks (publishing rebuilds the live site).
 - Verify your change in the running stack (and the browser where there is UI) and run the
   affected package's tests before opening a PR. Add tests for new behaviour.
 - **Always finish a code change with a pull request.** You don't need to be asked: the people
@@ -57,8 +73,8 @@ saves a signed-in screenshot of an admin page (default `/tmp/shot.png`).
   request against `main` with a clear title, and add the `preview` label, so the API and admin
   get a preview environment (the website gets a Vercel preview automatically). Open it as a draft
   if you have open questions. Then wait for the preview link in the PR comment and include it
-  in your reply. In the cloud there is no `gh`: use the GitHub tools, add the label as a separate
-  update, and watch the preview workflow's PR comment go from Building to Ready (a few minutes;
+  in your reply. In the cloud `gh pr` fails (GraphQL is blocked): open the PR with the GitHub
+  tools, add the label as a separate update, and watch the preview workflow's PR comment go from Building to Ready (a few minutes;
   docs/claude-cloud.md › Pull requests).
 - Before changing code, check push access: `git push --dry-run origin HEAD:refs/heads/<branch>`.
   On a 403 (now or later), tell the person right away, keep the work committed, and ask them to

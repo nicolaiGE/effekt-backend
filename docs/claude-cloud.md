@@ -33,6 +33,10 @@ organization; the form has no sharing setting.
   ```
   nodejs.org
   pkg-containers.githubusercontent.com
+  *.vercel.app
+  gieffektivt.no
+  geeffektivt.se
+  giveffektivt.dk
   binaries.prisma.sh
   download.cypress.io
   cdn.cypress.io
@@ -91,9 +95,42 @@ pnpm cloud:shot "/donors?q=kari" a.png # SHOT_FULL_PAGE=1 for the whole page, AD
 locally too. The visual screenshot tests have macOS baselines only; skip `--project=visual` here
 and run the specs for the area instead (admin-building.md › Which specs for which change).
 
+## Reaching services
+
+What a session can reach outside the repository, and how (CLAUDE.md has the short version).
+
+| Service                         | How                                                                                                                                                                                               | Credential                                                                                                                     |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| GitHub (code, PRs, Actions)     | git and `gh` through Anthropic's GitHub proxy. REST works (`gh run list`, `gh run view --log-failed`, `gh api …`); GraphQL doesn't, so `gh pr` and `gh issue` fail: use the GitHub tools for PRs. | The proxy swaps in the session user's GitHub token; the Claude GitHub App must have access to this repository.                 |
+| Vercel previews, the live sites | Plain HTTPS (`curl`, Playwright). Previews are public.                                                                                                                                            | None. `*.vercel.app` and the three sites are on the allowed domains.                                                           |
+| Sanity: published content       | The HTTP API; every dataset is public.                                                                                                                                                            | None                                                                                                                           |
+| Sanity: drafts and writes       | The HTTP API, as the Sanity user `claude@gieffektivt.no` (editor), so edits show up as Claude in the history.                                                                                     | A **network secret** on the environment: the proxy adds the token to requests for the project's hosts; it never enters the VM. |
+| Vercel build logs               | The Vercel connector, when enabled for the session.                                                                                                                                               | The connector's claude.ai authorization.                                                                                       |
+
+Sanity projects: `vf0df6h3` (NO: `production`, `dev`; also `production-se`, `dev-se`), `9reyurp9`
+(geeffektivt.se) and `2k8sn9h2` (giveffektivt.dk). The secret is set up for `vf0df6h3` only.
+
+### Setting up the Sanity secret (Owner, once per project)
+
+1. Get a token for `claude@gieffektivt.no` without touching your own Sanity login:
+   `bash scripts/cloud/sanity-token.sh` (needs `pnpm install`). It prints a login link; open it
+   in a **private** browser window and log in as `claude@gieffektivt.no`. The script refuses a
+   token for any other account, never prints it, and leaves it only on the clipboard.
+2. claude.ai → Admin settings → Cloud environments → `effekt-platform` → **Network secrets → Add**:
+   type **Bearer** (header `Authorization`, prefix `Bearer`), the token as the value, allowed
+   websites `vf0df6h3.api.sanity.io` and `vf0df6h3.apicdn.sanity.io`.
+3. Check in a session: a draft query
+   (`curl -sG https://vf0df6h3.api.sanity.io/v2025-02-19/data/query/production --data-urlencode 'query=count(*[_id in path("drafts.**")])'`)
+   returns a number above 0 only with the token.
+
+Rules for writing (also in CLAUDE.md): anything in `dev`; in `production` only drafts, and
+publishing or deleting only when the person asks explicitly, since publishing rebuilds the
+live site. Revoke the token by logging `claude@gieffektivt.no` out of all sessions in Sanity.
+
 ## Pull requests
 
-`gh` doesn't work in sessions. Claude pushes with git and uses its GitHub tools for the rest:
+`gh` works for REST calls (`gh run …`, `gh api …`) but not `gh pr`/`gh issue`, which use GraphQL
+that the GitHub proxy blocks. Claude pushes with git and uses its GitHub tools for the PR itself:
 
 1. At the start of a task that changes code, `git push --dry-run origin HEAD:refs/heads/<branch>`.
    A 403 means the Claude GitHub App can't write to this repository; say so at once.

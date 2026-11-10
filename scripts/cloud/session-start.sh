@@ -34,9 +34,30 @@ if [ -z "${PW_CHROMIUM_PATH:-}" ]; then
   fi
 fi
 
-if ! docker info >/dev/null 2>&1; then
-  (dockerd >/var/log/dockerd.log 2>&1 &)
-  for _ in $(seq 1 60); do docker info >/dev/null 2>&1 && break; sleep 1; done
+# Runs a command as root: directly, or with passwordless sudo if the session isn't root.
+as_root() {
+  if [ "$(id -u)" = 0 ]; then "$@"; elif sudo -n true 2>/dev/null; then sudo -n "$@"; else return 1; fi
+}
+
+start_docker() {
+  docker info >/dev/null 2>&1 && return 0
+  # Pid files left by the snapshot (or an earlier session) make dockerd refuse to start.
+  if ! pgrep -x dockerd >/dev/null; then
+    as_root rm -f /var/run/docker.pid /var/run/docker/containerd/containerd.pid
+  fi
+  as_root sh -c 'dockerd >/var/log/dockerd.log 2>&1 &' || return 1
+  for _ in $(seq 1 60); do
+    if docker info >/dev/null 2>&1; then return 0; fi
+    # A non-root session may need access to the socket
+    [ -S /var/run/docker.sock ] && as_root chmod 666 /var/run/docker.sock 2>/dev/null
+    sleep 1
+  done
+  return 1
+}
+
+if ! start_docker; then
+  echo "Docker didn't start (session user: $(id -un)). Last lines of /var/log/dockerd.log:"
+  tail -n 15 /var/log/dockerd.log 2>/dev/null || echo "(no log)"
 fi
 
 pnpm install --frozen-lockfile --prefer-offline --reporter=silent ||
@@ -53,6 +74,6 @@ if docker info >/dev/null 2>&1; then
   ' >/dev/null 2>&1 &
   echo "Dev stack starting in the background (log: /tmp/dev-env.log; ready when /tmp/dev-env.ready exists)."
 else
-  echo "Docker is not available; the dev stack was not started (see /var/log/dockerd.log)." >&2
+  echo "Docker is not available, so the dev stack was not started. Try starting dockerd as above and then run the stack yourself (docs/claude-cloud.md); tell the person if it can't be fixed." >&2
 fi
 exit 0

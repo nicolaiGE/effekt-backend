@@ -69,4 +69,18 @@ wait "$warm_pid"
 wait "$pull_pid"
 
 rm -rf "$WARM" # the pnpm store and the Docker images stay
+
+# Stop Docker cleanly. The VM is snapshotted right after this script, and a dockerd that was
+# running leaves pid files behind that make it refuse to start in every session.
+if pgrep -x dockerd >/dev/null; then
+  pkill -TERM -x dockerd || true
+  for _ in $(seq 1 30); do pgrep -x dockerd >/dev/null || break; sleep 1; done
+  # Still running after 30 s: kill it, so the pid files below aren't removed under a live daemon
+  if pgrep -x dockerd >/dev/null; then
+    pkill -KILL -x dockerd || true
+    sleep 1
+  fi
+fi
+pkill -TERM -x containerd 2>/dev/null || true
+rm -f /var/run/docker.pid /var/run/docker/containerd/containerd.pid
 t "done"
