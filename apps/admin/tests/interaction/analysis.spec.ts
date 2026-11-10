@@ -83,6 +83,63 @@ test("the overview refreshes every minute and the figure follows new donations",
   await expect(figure).toHaveText("170 250 000 kr");
 });
 
+test("the office screen shows the figure without signing in and keeps it fresh", async ({
+  page,
+}) => {
+  await page.clock.install();
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  const ticker = { sum: "170245588" };
+  let calls = 0;
+  let failing = false;
+  const authHeaders: (string | undefined)[] = [];
+  page.on("request", (request) => {
+    if (request.url().includes("/trpc/analysis.ticker"))
+      authHeaders.push(request.headers().authorization);
+  });
+  await stubAnalysisApi(page, {
+    overrides: {
+      "analysis.ticker": () => {
+        calls++;
+        if (failing)
+          return { error: { code: "INTERNAL_SERVER_ERROR", message: "db down", httpStatus: 500 } };
+        return calls === 1 ? ticker : { ...ticker, sum: "170250000" };
+      },
+    },
+  });
+  // Straight to the screen, never through /login
+  await page.goto("/ticker");
+  await expect(page).toHaveURL(/\/ticker$/);
+  const figure = page.locator("[data-slot=count-up]");
+  await expect(figure).toHaveText("170 245 588 kr");
+  await expect(page.getByRole("img", { name: "Gi Effektivt" })).toBeVisible();
+  // No menu: only the figure
+  await expect(page.getByRole("navigation")).toHaveCount(0);
+  expect(authHeaders.length).toBeGreaterThan(0);
+  expect(authHeaders.every((header) => header === undefined)).toBe(true);
+
+  // A failed refresh (after its retries) keeps the last figure on screen and says so
+  failing = true;
+  await page.clock.fastForward(61_000);
+  await page.clock.fastForward(10_000);
+  await expect(page.getByText(/couldn't update, trying again/)).toBeVisible();
+  await expect(figure).toHaveText("170 245 588 kr");
+
+  // The next minute tries again and brings it up to date
+  failing = false;
+  await page.clock.fastForward(61_000);
+  await expect(figure).toHaveText("170 250 000 kr");
+  await expect(page.getByText(/couldn't update/)).toHaveCount(0);
+});
+
+test("the overview links to the office screen", async ({ page }) => {
+  await signIn(page);
+  await page.goto("/analysis");
+  await expect(page.getByRole("link", { name: "Show on a screen" })).toHaveAttribute(
+    "href",
+    "/ticker",
+  );
+});
+
 test("adding a pledge validates inline, sends amount and date, and refetches the overview", async ({
   page,
 }) => {

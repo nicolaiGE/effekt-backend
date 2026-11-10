@@ -122,6 +122,7 @@ const fixtures: Record<string, unknown> = {
   "analysis.newDonors": newDonorsFixture(),
   "analysis.cohorts": cohortsFixture(),
   "analysis.overview": overviewFixture(),
+  "analysis.ticker": { sum: "170245588" },
   "home.trends": homeTrendsFixture(),
   "analysis.pledges.list": pledgesFixture(),
   "donations.get": donationFixture,

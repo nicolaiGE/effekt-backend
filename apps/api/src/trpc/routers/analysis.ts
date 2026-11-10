@@ -19,13 +19,14 @@ import {
   pledgeMarkReceivedInput,
   pledgeUpdateInput,
 } from "../schemas/analysis";
-import { adminProcedure, router } from "../trpc";
+import { adminProcedure, publicProcedure, router } from "../trpc";
 
 /**
  * Analysis for the admin: the overview (collected this year, through time, open pledges) and
  * pledges (tilsagn). Pledges are a separate layer on top of the measured totals and are never
  * mixed into them. Same rules as Nicolai's REST endpoints (GET /analysis/overview,
- * /analysis/pledges), reusing his DAO modules.
+ * /analysis/pledges), reusing his DAO modules. Admin only, except `ticker`: the overview's big
+ * figure for the office screen, public and without any split.
  *
  * Money is returned as decimal strings, like the rest of the API. The overview's totals are
  * whole kroner (buildOverview rounds them), so they read e.g. "171237465".
@@ -44,6 +45,16 @@ export type AnalysisOverview = {
   pledges: { open: string; count: number };
   /** measured + open pledges, and the distance to the milestone */
   withPledges: { sum: string; milestone: string; remaining: string; passed: boolean };
+};
+
+/**
+ * The public ticker (analysis.ticker): only the big figure on the overview, for a screen at the
+ * office that shows it without signing in. No counts and no split into measured and pledged, so a
+ * single gift or pledge can't be read off it.
+ */
+export type AnalysisTicker = {
+  /** Same as overview.withPledges.sum: given to the recipients since the start + open pledges */
+  sum: string;
 };
 
 export type PledgeRow = {
@@ -150,11 +161,13 @@ const pledgesRouter = router({
  * month starts a new entry.
  */
 const CACHE_MS = 5 * 60 * 1000;
+/** The public ticker is kept for a minute, as often as the admin asks for new numbers */
+const TICKER_CACHE_MS = 60 * 1000;
 const cache = new Map<string, { at: number; value: Promise<unknown> }>();
 
-function cached<T>(key: string, load: () => Promise<T>): Promise<T> {
+function cached<T>(key: string, load: () => Promise<T>, ms = CACHE_MS): Promise<T> {
   const hit = cache.get(key);
-  if (hit && Date.now() - hit.at < CACHE_MS) return hit.value as Promise<T>;
+  if (hit && Date.now() - hit.at < ms) return hit.value as Promise<T>;
   const value = load();
   cache.set(key, { at: Date.now(), value });
   // A failed load isn't kept
@@ -162,7 +175,7 @@ function cached<T>(key: string, load: () => Promise<T>): Promise<T> {
   return value;
 }
 
-/** For tests: forget cached donor cohort numbers */
+/** For tests: forget cached donor cohort numbers and the ticker */
 export const clearAnalysisCache = () => cache.clear();
 
 const osloNow = () => DateTime.now().setZone(OSLO_ZONE);
@@ -217,6 +230,22 @@ export const analysisRouter = router({
       buildCohorts(await DAO.donorCohorts.getCohortRows(FIRST_COHORT_YEAR), now.year),
     );
   }),
+
+  /**
+   * The overview's big figure without signing in, for the office screen (/ticker in the admin).
+   * Public, so it is kept for a minute: the totals scan every donation, and any number of
+   * screens asking every minute cost at most one query a minute.
+   */
+  ticker: publicProcedure.query((): Promise<AnalysisTicker> =>
+    cached(
+      "ticker",
+      async () => {
+        const { withPledges } = buildOverview(await DAO.analysis.getOverviewTotals());
+        return { sum: String(withPledges.sum) };
+      },
+      TICKER_CACHE_MS,
+    ),
+  ),
 
   pledges: pledgesRouter,
 });

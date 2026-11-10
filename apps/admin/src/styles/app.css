@@ -151,6 +151,16 @@
       opacity: 0;
     }
   }
+  /* The office screen (/ticker): the butterfly behind the figure drifts a little, very slowly. */
+  --animate-ticker-drift: ticker-drift 24s ease-in-out infinite alternate;
+  @keyframes ticker-drift {
+    from {
+      transform: translate(0, 0) rotate(0deg);
+    }
+    to {
+      transform: translate(-3vh, -4vh) rotate(-4deg);
+    }
+  }
   /* Table rows arriving: a quick fade while settling a few pixels down into place. The table staggers rows with an
      inline animation-delay. Transform and opacity only, so nothing around the rows moves. */
   --animate-row-in: row-in 180ms var(--ease-out) both;

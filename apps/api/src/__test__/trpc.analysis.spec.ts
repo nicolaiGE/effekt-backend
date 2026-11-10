@@ -4,6 +4,7 @@ import type { Request, Response } from "express";
 import sinon from "sinon";
 import { DAO } from "../custom_modules/DAO";
 import { AnalysisOverviewTotals, buildOverview } from "../custom_modules/DAO_modules/analysis";
+import { clearAnalysisCache } from "../trpc/routers/analysis";
 import { appRouter } from "../trpc/router";
 import { createCallerFactory } from "../trpc/trpc";
 
@@ -124,6 +125,34 @@ describe("analysis", () => {
     it("passes database errors on", async () => {
       sinon.stub(DAO.analysis, "getOverviewTotals").rejects(new Error("db down"));
       await expectCode(admin().analysis.overview(), "INTERNAL_SERVER_ERROR");
+    });
+  });
+
+  describe("ticker", () => {
+    afterEach(() => clearAnalysisCache());
+
+    it("gives anyone the overview's big figure, and nothing else", async () => {
+      sinon.stub(DAO.analysis, "getOverviewTotals").resolves(totals);
+      expect(await callerWith().analysis.ticker()).to.deep.equal({ sum: "198587465" });
+    });
+
+    it("asks the database at most once a minute", async () => {
+      const clock = sinon.useFakeTimers({ now: Date.now(), toFake: ["Date"] });
+      const stub = sinon.stub(DAO.analysis, "getOverviewTotals").resolves(totals);
+      await callerWith().analysis.ticker();
+      await callerWith().analysis.ticker();
+      expect(stub.callCount).to.equal(1);
+      clock.tick(61_000);
+      await callerWith().analysis.ticker();
+      expect(stub.callCount).to.equal(2);
+    });
+
+    it("doesn't keep a failed load", async () => {
+      const stub = sinon.stub(DAO.analysis, "getOverviewTotals");
+      stub.onFirstCall().rejects(new Error("db down"));
+      stub.onSecondCall().resolves(totals);
+      await expectCode(callerWith().analysis.ticker(), "INTERNAL_SERVER_ERROR");
+      expect((await callerWith().analysis.ticker()).sum).to.equal("198587465");
     });
   });
 
