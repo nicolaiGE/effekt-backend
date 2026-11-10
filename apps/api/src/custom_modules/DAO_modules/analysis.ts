@@ -1,4 +1,5 @@
 import { DAO } from "../DAO";
+import paymentMethods from "../../enums/paymentMethods";
 
 /** Milestone for the "through time" total, shown on the analysis overview */
 const THROUGH_TIME_MILESTONE = 200_000_000;
@@ -147,6 +148,47 @@ async function getOverviewTotals(now: Date = new Date()): Promise<AnalysisOvervi
   };
 }
 
+/** How many days of agreement donations the ticker's estimated flow averages over */
+export const AGREEMENT_FLOW_DAYS = 90;
+
+/**
+ * The fixed agreements' flow, for the ticker's estimate: what AvtaleGiro and Vipps agreements
+ * passed on to the recipients over the last AGREEMENT_FLOW_DAYS days (the Drift share held
+ * outside, as in the through-time total), and the newest agreement donation's time. Money that
+ * came in after that time is in the agreements' accounts but not registered yet.
+ */
+async function getAgreementFlow(
+  now: Date = new Date(),
+): Promise<{ sum: number; latest: Date | null }> {
+  const [[row]] = await DAO.query<{ sum: string | null; latest: Date | null }[]>(
+    `
+    SELECT
+      SUM(d.sum_confirmed * (1 - COALESCE(operations.share, 0))) AS sum,
+      MAX(d.timestamp_confirmed) AS latest
+    FROM Donations d
+    LEFT JOIN (
+      SELECT dca.Distribution_KID AS KID,
+        SUM(dca.Percentage_share / 100 * dcao.Percentage_share / 100) AS share
+      FROM Distribution_cause_areas dca
+      JOIN Distribution_cause_area_organizations dcao
+        ON dcao.Distribution_cause_area_ID = dca.ID
+      JOIN Organizations o ON o.ID = dcao.Organization_ID
+      WHERE o.abbriv = 'Drift' AND dcao.Percentage_share > 0
+      GROUP BY dca.Distribution_KID
+    ) operations ON operations.KID = d.KID_fordeling
+    WHERE d.Payment_ID IN (?, ?)
+      AND d.timestamp_confirmed > DATE_SUB(?, INTERVAL ? DAY)
+      AND d.timestamp_confirmed <= ?
+    `,
+    [paymentMethods.avtalegiro, paymentMethods.vipps_recurring, now, AGREEMENT_FLOW_DAYS, now],
+  );
+  return {
+    sum: parseFloat(row.sum ?? "0"),
+    latest: row.latest ? new Date(row.latest) : null,
+  };
+}
+
 export const analysis = {
   getOverviewTotals,
+  getAgreementFlow,
 };

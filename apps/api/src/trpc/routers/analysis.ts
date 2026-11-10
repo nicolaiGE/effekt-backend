@@ -1,7 +1,7 @@
 import { TRPCError } from "@trpc/server";
 import { DateTime } from "luxon";
 import { DAO } from "../../custom_modules/DAO";
-import { buildOverview } from "../../custom_modules/DAO_modules/analysis";
+import { AGREEMENT_FLOW_DAYS, buildOverview } from "../../custom_modules/DAO_modules/analysis";
 import {
   buildCohorts,
   buildNewDonors,
@@ -55,6 +55,12 @@ export type AnalysisOverview = {
 export type AnalysisTicker = {
   /** Same as overview.withPledges.sum: given to the recipients since the start + open pledges */
   sum: string;
+  /**
+   * The estimate on top: the fixed agreements' average flow in kroner per second (last
+   * AGREEMENT_FLOW_DAYS days), and since when it applies (the newest agreement donation, ISO).
+   * The screen adds `perSecond × (now − since)`: agreement money not registered yet.
+   */
+  estimate: { perSecond: number; since: string } | null;
 };
 
 export type PledgeRow = {
@@ -180,6 +186,10 @@ export const clearAnalysisCache = () => cache.clear();
 
 const osloNow = () => DateTime.now().setZone(OSLO_ZONE);
 
+/** Midnight UTC after the given time */
+const endOfUtcDay = (time: Date) =>
+  new Date(Date.UTC(time.getUTCFullYear(), time.getUTCMonth(), time.getUTCDate() + 1));
+
 export const analysisRouter = router({
   /** Same numbers as GET /analysis/overview in Nicolai's backend PR #825 */
   overview: adminProcedure.query(async (): Promise<AnalysisOverview> => {
@@ -240,8 +250,24 @@ export const analysisRouter = router({
     cached(
       "ticker",
       async () => {
-        const { withPledges } = buildOverview(await DAO.analysis.getOverviewTotals());
-        return { sum: String(withPledges.sum) };
+        const [totals, flow] = await Promise.all([
+          DAO.analysis.getOverviewTotals(),
+          DAO.analysis.getAgreementFlow(),
+        ]);
+        const { withPledges } = buildOverview(totals);
+        return {
+          sum: String(withPledges.sum),
+          estimate:
+            flow.latest && flow.sum > 0
+              ? {
+                  perSecond: flow.sum / (AGREEMENT_FLOW_DAYS * 86_400),
+                  // Agreement donations are dated, not timed (AvtaleGiro's OCR date and Vipps'
+                  // due date, at 00:00 UTC), so the latest day's money is all registered: the
+                  // estimate starts at the end of that day, not its start
+                  since: endOfUtcDay(flow.latest).toISOString(),
+                }
+              : null,
+        };
       },
       TICKER_CACHE_MS,
     ),

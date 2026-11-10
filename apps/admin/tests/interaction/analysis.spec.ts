@@ -88,7 +88,7 @@ test("the office screen shows the figure without signing in and keeps it fresh",
 }) => {
   await page.clock.install();
   await page.emulateMedia({ reducedMotion: "reduce" });
-  const ticker = { sum: "170245588" };
+  const ticker = { sum: "170245588", estimate: null };
   let calls = 0;
   let failing = false;
   const authHeaders: (string | undefined)[] = [];
@@ -129,6 +129,79 @@ test("the office screen shows the figure without signing in and keeps it fresh",
   await page.clock.fastForward(61_000);
   await expect(figure).toHaveText("170 250 000 kr");
   await expect(page.getByText(/couldn't update/)).toHaveCount(0);
+});
+
+test("the office screen adds the agreements' estimate, ticks on and never goes back", async ({
+  page,
+}) => {
+  await page.clock.install({ time: new Date("2026-11-09T12:00:00Z") });
+  let calls = 0;
+  let sum = "170245588";
+  let since = "2026-11-09T10:00:00.000Z";
+  await stubAnalysisApi(page, {
+    overrides: {
+      // 0.5 kr a second since 10:00: about 3 600 kr not registered yet at noon
+      "analysis.ticker": () => {
+        calls++;
+        return { sum, estimate: { perSecond: 0.5, since } };
+      },
+    },
+  });
+  const kroner = async () =>
+    Number((await page.locator("[data-slot=count-up]").textContent())!.replace(/\D/g, ""));
+  await page.goto("/ticker");
+  await expect(page.getByText(/Includes an estimate for the fixed agreements/)).toBeVisible();
+  // From here on the figure moves only when the test lets time run
+  await page.clock.pauseAt(new Date("2026-11-09T12:00:10Z"));
+  await page.clock.runFor(100);
+  const start = await kroner();
+  expect(start).toBeGreaterThanOrEqual(170_249_188);
+  expect(start).toBeLessThan(170_249_200);
+
+  // Ten seconds later it has ticked on by 5 kr
+  await page.clock.runFor(10_000);
+  expect(await kroner()).toBe(start + 5);
+
+  // The agreement money up to 11:59 is registered, below the estimate: at the next refresh
+  // the figure holds still instead of going back
+  sum = "170248000";
+  since = "2026-11-09T11:59:00.000Z";
+  const before = calls;
+  await page.clock.runFor(60_000);
+  await expect.poll(() => calls).toBeGreaterThan(before);
+  await page.clock.runFor(100);
+  const held = await kroner();
+  await page.clock.runFor(10_000);
+  expect(await kroner()).toBe(held);
+});
+
+test("the office screen follows a drop larger than a day's flow down", async ({ page }) => {
+  await page.clock.install({ time: new Date("2026-11-09T12:00:00Z") });
+  let calls = 0;
+  let sum = "170245588";
+  await stubAnalysisApi(page, {
+    overrides: {
+      "analysis.ticker": () => {
+        calls++;
+        return { sum, estimate: { perSecond: 0.5, since: "2026-11-09T10:00:00.000Z" } };
+      },
+    },
+  });
+  const kroner = async () =>
+    Number((await page.locator("[data-slot=count-up]").textContent())!.replace(/\D/g, ""));
+  await page.goto("/ticker");
+  await expect(page.getByText(/Includes an estimate for the fixed agreements/)).toBeVisible();
+  await page.clock.pauseAt(new Date("2026-11-09T12:00:10Z"));
+  await page.clock.runFor(100);
+  expect(await kroner()).toBeGreaterThan(170_245_588);
+
+  // A donation of about 1.2 million kr deleted: far more than a day's flow (43 200 kr)
+  sum = "169000000";
+  const before = calls;
+  await page.clock.runFor(60_000);
+  await expect.poll(() => calls).toBeGreaterThan(before);
+  await page.clock.runFor(100);
+  expect(await kroner()).toBeLessThan(169_100_000);
 });
 
 test("the overview links to the office screen", async ({ page }) => {

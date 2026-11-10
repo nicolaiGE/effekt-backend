@@ -4,6 +4,7 @@ import logo from "@/assets/logos/GiEffektivt_Logo_2026_Hvit.png";
 import mark from "@/assets/logos/GiEffektivt_Symbol_2026_Hvit.png";
 import { DateTime } from "@/components/domain/format";
 import { CountUpMoney } from "@/features/analysis/count-up";
+import { EstimatedTicker } from "@/features/analysis/estimated-ticker";
 import { OVERVIEW_REFRESH_MS } from "@/features/analysis/model";
 import { org } from "@/lib/org";
 import { useTRPC } from "@/lib/trpc";
@@ -49,7 +50,13 @@ function TickerPage() {
         />
         {/* About 14 characters ("170 245 588 kr"): 10vw keeps it within the screen's width */}
         <p className="text-[clamp(3rem,10vw,16rem)] leading-none font-semibold tracking-tight [text-shadow:0_0.04em_0.12em_rgb(0_0_0/0.18)]">
-          {data ? (
+          {data?.estimate ? (
+            <EstimatedTicker
+              sum={data.sum}
+              perSecond={data.estimate.perSecond}
+              since={data.estimate.since}
+            />
+          ) : data ? (
             <CountUpMoney value={data.sum} />
           ) : (
             <span className="text-white/70" aria-busy>
@@ -61,6 +68,7 @@ function TickerPage() {
       <p className="absolute inset-x-0 bottom-[3vh] text-center text-[clamp(0.875rem,1.1vw,1.5rem)] text-white/80">
         {data && (
           <>
+            {data.estimate && "Includes an estimate for the fixed agreements · "}
             Updated{" "}
             <DateTime value={new Date(ticker.dataUpdatedAt).toISOString()} format="datetime" />
             {ticker.isError && " · couldn't update, trying again"}

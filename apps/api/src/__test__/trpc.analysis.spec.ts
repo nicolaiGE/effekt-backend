@@ -1,4 +1,4 @@
-import { describe, it, afterEach } from "vitest";
+import { describe, it, afterEach, beforeEach } from "vitest";
 import { expect } from "chai";
 import type { Request, Response } from "express";
 import sinon from "sinon";
@@ -129,11 +129,28 @@ describe("analysis", () => {
   });
 
   describe("ticker", () => {
+    // The ticker's estimate: 90 days of agreement donations, the newest dated 8 November
+    // (agreement donations are dated at 00:00 UTC, so all of the 8th is registered)
+    const flow = { sum: 3_110_400, latest: new Date("2026-11-08T00:00:00Z") };
+    beforeEach(() => {
+      sinon.stub(DAO.analysis, "getAgreementFlow").resolves(flow);
+    });
     afterEach(() => clearAnalysisCache());
 
-    it("gives anyone the overview's big figure, and nothing else", async () => {
+    it("gives anyone the overview's big figure and the agreements' flow, nothing else", async () => {
       sinon.stub(DAO.analysis, "getOverviewTotals").resolves(totals);
-      expect(await callerWith().analysis.ticker()).to.deep.equal({ sum: "198587465" });
+      expect(await callerWith().analysis.ticker()).to.deep.equal({
+        sum: "198587465",
+        // 3 110 400 kr over 90 days = 0.4 kr a second
+        // and it starts after the newest day, which is already in the sum
+        estimate: { perSecond: 0.4, since: "2026-11-09T00:00:00.000Z" },
+      });
+    });
+
+    it("has no estimate without agreement donations in the last 90 days", async () => {
+      sinon.stub(DAO.analysis, "getOverviewTotals").resolves(totals);
+      (DAO.analysis.getAgreementFlow as sinon.SinonStub).resolves({ sum: 0, latest: null });
+      expect((await callerWith().analysis.ticker()).estimate).to.equal(null);
     });
 
     it("asks the database at most once a minute", async () => {
