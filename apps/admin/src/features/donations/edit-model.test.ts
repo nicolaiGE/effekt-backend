@@ -60,6 +60,8 @@ const lookups = {
   config,
   paymentMethodName: (id: number) => ({ 2: "Bank", 4: "Vipps" })[id],
   ownerName: (id: number) => ({ 3: "Gi Effektivt", 1: "Effekt" })[id],
+  taxUnitName: (id: number) =>
+    ({ 9: "Kari · 010190 •••••", 12: "Kari Holding AS · 923456789" })[id],
 };
 
 describe("donation edit", () => {
@@ -123,6 +125,68 @@ describe("donation edit", () => {
     ]);
   });
 
+  it("moves the donation to another tax unit with the split unchanged", () => {
+    const draft = { ...editDraftFromDonation(donation, config), taxUnitId: "12" };
+    const { input, changes } = editChanges(donation, draft, lookups);
+    expect(input).toEqual({
+      id: 7,
+      distribution: {
+        donorId: 3,
+        taxUnitId: 12,
+        causeAreas: [
+          {
+            id: 1,
+            percentageShare: "100",
+            standardSplit: true,
+            organizations: [{ id: 11, percentageShare: "100" }],
+          },
+        ],
+      },
+    });
+    // Only the tax unit is listed: the split is the same
+    expect(changes).toEqual([
+      { label: "Tax unit", before: "Kari · 010190 •••••", after: "Kari Holding AS · 923456789" },
+    ]);
+  });
+
+  it("adds a tax unit to a donation without one, and can take it off again", () => {
+    const none = {
+      ...donation,
+      distribution: { ...donation.distribution, taxUnitId: null },
+    } as unknown as Donation;
+    const draft = editDraftFromDonation(none, config);
+    expect(draft.taxUnitId).toBe("");
+    const added = editChanges(none, { ...draft, taxUnitId: "12" }, lookups);
+    expect(added.input.distribution?.taxUnitId).toBe(12);
+    expect(added.changes).toEqual([
+      { label: "Tax unit", before: "No tax unit", after: "Kari Holding AS · 923456789" },
+    ]);
+
+    const removed = editChanges(
+      donation,
+      { ...editDraftFromDonation(donation, config), taxUnitId: "" },
+      lookups,
+    );
+    expect(removed.input.distribution?.taxUnitId).toBeNull();
+    expect(removed.changes).toEqual([
+      { label: "Tax unit", before: "Kari · 010190 •••••", after: "No tax unit" },
+    ]);
+  });
+
+  it("keeps a stored 0 (no tax unit on an old KID) when only the split changes", () => {
+    const old = {
+      ...donation,
+      distribution: { ...donation.distribution, taxUnitId: 0 },
+    } as unknown as Donation;
+    const base = editDraftFromDonation(old, config);
+    expect(base.taxUnitId).toBe("");
+    let distribution = setShare(setShare(base.distribution, 1, 50), 2, 50);
+    distribution = setStandardSplit(distribution, config, 2, true);
+    const { input, changes } = editChanges(old, { ...base, distribution }, lookups);
+    expect(input.distribution?.taxUnitId).toBe(0);
+    expect(changes.map((change) => change.label)).toEqual(["Distribution"]);
+  });
+
   it("rejects what the API can't store", () => {
     const draft = editDraftFromDonation(donation, config);
     expect(
@@ -151,7 +215,7 @@ describe("donation edit", () => {
       const { input } = editChanges(
         donation,
         { ...draft, sum },
-        { config, paymentMethodName: () => undefined, ownerName: () => undefined },
+        { ...lookups, paymentMethodName: () => undefined, ownerName: () => undefined },
       );
       expect(input.sum).toBe(1250.5);
     }

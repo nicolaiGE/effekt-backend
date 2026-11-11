@@ -32,6 +32,8 @@ export type EditDraft = {
   paymentId: string;
   externalRef: string;
   ownerId: string;
+  /** The tax unit the donation is reported on, "" = none. Part of the donation's distribution. */
+  taxUnitId: string;
   distribution: DistributionDraft;
 };
 
@@ -47,9 +49,13 @@ export function editDraftFromDonation(donation: Donation, config: CauseAreaConfi
     paymentId: String(donation.paymentId),
     externalRef: donation.paymentExternalRef ?? "",
     ownerId: String(donation.metaOwnerId),
+    taxUnitId: taxUnitValue(donation.distribution.taxUnitId),
     distribution: draftFromApi(config, donation.distribution),
   };
 }
+
+/** The form's value for a distribution's tax unit: "" for none (null, or the database's 0) */
+const taxUnitValue = (taxUnitId: number | null | undefined) => (taxUnitId ? String(taxUnitId) : "");
 
 export function validateEdit(draft: EditDraft, original: Donation) {
   const cost = draft.transactionCost.trim() === "" ? null : parseMoneyInput(draft.transactionCost);
@@ -85,6 +91,8 @@ type Lookups = {
   config: CauseAreaConfig[];
   paymentMethodName: (id: number) => string | undefined;
   ownerName: (id: number) => string | undefined;
+  /** The donor's tax unit by id, as the form lists it (name and masked number) */
+  taxUnitName: (id: number) => string | undefined;
 };
 
 /** "Global health 60 %, Animal welfare 40 % (custom)" */
@@ -106,7 +114,7 @@ export function describeDistribution(draft: DistributionDraft, config: CauseArea
 export function editChanges(
   original: Donation,
   draft: EditDraft,
-  { config, paymentMethodName, ownerName }: Lookups,
+  { config, paymentMethodName, ownerName, taxUnitName }: Lookups,
 ): { input: DonationUpdate; changes: Change[] } {
   const input: DonationUpdate = { id: original.id };
   const changes: Change[] = [];
@@ -172,13 +180,31 @@ export function editChanges(
     });
   }
 
+  // The tax unit and the split are both part of the distribution: a change to either sends the
+  // whole distribution, and the donation moves to a KID with that donor, tax unit and split
   const before = draftFromApi(config, original.distribution);
-  if (!sameDistribution(before, draft.distribution)) {
+  const splitChanged = !sameDistribution(before, draft.distribution);
+  const taxUnitBefore = taxUnitValue(original.distribution.taxUnitId);
+  const taxUnitChanged = draft.taxUnitId !== taxUnitBefore;
+  if (splitChanged || taxUnitChanged) {
     input.distribution = {
       donorId: original.donorId,
-      taxUnitId: original.distribution.taxUnitId ?? null,
+      // Unchanged, the stored value goes back as it is (an old KID can hold 0 for none, and the
+      // API matches the KID on it)
+      taxUnitId: taxUnitChanged
+        ? draft.taxUnitId
+          ? Number(draft.taxUnitId)
+          : null
+        : (original.distribution.taxUnitId ?? null),
       causeAreas: draftToApi(draft.distribution),
     };
+  }
+  if (taxUnitChanged) {
+    const name = (value: string) =>
+      value ? (taxUnitName(Number(value)) ?? `#${value}`) : "No tax unit";
+    changes.push({ label: "Tax unit", before: name(taxUnitBefore), after: name(draft.taxUnitId) });
+  }
+  if (splitChanged) {
     changes.push({
       label: "Distribution",
       before: describeDistribution(before, config),
