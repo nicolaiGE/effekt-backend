@@ -114,7 +114,8 @@ export function TaxDeductionReport() {
           </Select>
           {year === thisYear && (
             <p className="text-sm text-muted-foreground">
-              The year isn't over: the figures change as gifts come in.
+              The year isn't over: the figures change as gifts come in. The report in January is for
+              the year before ({thisYear - 1}): choose it above.
             </p>
           )}
         </div>

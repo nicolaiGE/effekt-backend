@@ -8,9 +8,9 @@ import {
 } from "./tax-deduction-model";
 
 describe("tax deduction report", () => {
-  it("defaults to last year and also offers the running year", () => {
+  it("defaults to the running year and also offers the five before it", () => {
     const january = new Date(2027, 0, 12);
-    expect(defaultTaxYear(january)).toBe(2026);
+    expect(defaultTaxYear(january)).toBe(2027);
     expect(taxYearOptions(january)).toEqual([2027, 2026, 2025, 2024, 2023, 2022]);
     expect(taxYearOptions(new Date(2026, 10, 10))[0]).toBe(2026);
   });

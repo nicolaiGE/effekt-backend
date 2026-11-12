@@ -5,7 +5,8 @@ import { stubAnalysisApi } from "../analysis-fixtures";
  * Reports › Tax deduction against a stubbed API: the year, control figures, the deviation lists
  * with donor links and no national IDs, the test-mode notice and the XML download.
  */
-const lastYear = new Date().getFullYear() - 1;
+/** The page opens on the running year */
+const thisYear = new Date().getFullYear();
 
 const overview = (year: number, difference = "0.00") => ({
   year,
@@ -101,7 +102,7 @@ async function open(page: Page, calls: Calls, xmlResult: unknown) {
       "reports.tax.overview": (input) => {
         calls.overview.push(input);
         const year = (input as { year: number }).year;
-        return overview(year, year === lastYear ? "0.00" : "0.01");
+        return overview(year, year === thisYear ? "0.00" : "0.01");
       },
       "reports.tax.missingTaxUnitNotice": (input) => {
         calls.notice.push(input);
@@ -127,7 +128,7 @@ test("tax deduction: control figures, deviation lists without national IDs, year
   await open(page, calls, null);
 
   await expect(page.getByRole("heading", { name: "Control figures" })).toBeVisible();
-  await expect.poll(() => calls.overview[0]).toEqual({ year: lastYear, minSum: 500 });
+  await expect.poll(() => calls.overview[0]).toEqual({ year: thisYear, minSum: 500 });
   await expect(page.getByText("31 500,10 kr")).toBeVisible();
   await expect(page.getByText("Adds up to the øre")).toBeVisible();
   await expect(page.getByRole("table", { name: "Reconciliation" })).toContainText("33 100,39 kr");
@@ -162,16 +163,14 @@ test("tax deduction: control figures, deviation lists without national IDs, year
   // No 9- or 11-digit numbers anywhere on the page
   expect(await page.locator("main").innerText()).not.toMatch(/\b\d{9}(\d{2})?\b/);
 
-  // The running year can be chosen too, while it runs
-  await page.getByLabel("Gift year").click();
-  await page.getByRole("option", { name: String(lastYear + 1) }).click();
-  await expect.poll(() => calls.overview.at(-1)).toEqual({ year: lastYear + 1, minSum: 500 });
+  // The running year is open by default, and says so
   await expect(page.getByText("The year isn't over")).toBeVisible();
 
-  // Another year asks again; a difference is called out
+  // Last year (the one reported in January) asks again; a difference is called out
   await page.getByLabel("Gift year").click();
-  await page.getByRole("option", { name: String(lastYear - 1) }).click();
-  await expect.poll(() => calls.overview.at(-1)).toEqual({ year: lastYear - 1, minSum: 500 });
+  await page.getByRole("option", { name: String(thisYear - 1) }).click();
+  await expect.poll(() => calls.overview.at(-1)).toEqual({ year: thisYear - 1, minSum: 500 });
+  await expect(page.getByText("The year isn't over")).toHaveCount(0);
   await expect(page.getByText("The figures don't add up")).toBeVisible();
 });
 
@@ -191,7 +190,7 @@ test("tax deduction: the missing tax unit notice in test mode goes to the test a
   await expect
     .poll(() => calls.notice[0])
     .toEqual({
-      year: lastYear,
+      year: thisYear,
       minSum: 500,
       testEmail: "test@example.org",
       testLimit: 3,
@@ -205,11 +204,11 @@ test("tax deduction: the missing tax unit notice in test mode goes to the test a
   const realSend = dialog.getByRole("button", { name: "Send to donors" });
   await expect(realSend).toBeDisabled();
   // The typed year goes to the API too, which refuses a real send without it
-  await dialog.getByLabel(/to confirm/).fill(String(lastYear));
+  await dialog.getByLabel(/to confirm/).fill(String(thisYear));
   await realSend.click();
   await expect
     .poll(() => calls.notice[1])
-    .toEqual({ year: lastYear, minSum: 500, confirmYear: lastYear });
+    .toEqual({ year: thisYear, minSum: 500, confirmYear: thisYear });
 });
 
 test("tax deduction: ticked donors move to Left out and back", async ({ page }) => {
@@ -221,7 +220,7 @@ test("tax deduction: ticked donors move to Left out and back", async ({ page }) 
   await page.getByRole("button", { name: "Move to Left out" }).click();
   await expect
     .poll(() => calls.status?.[0])
-    .toEqual({ year: lastYear, donorIds: [20], status: "excluded" });
+    .toEqual({ year: thisYear, donorIds: [20], status: "excluded" });
   await expect(page.getByText("Moved 1 donor to Left out")).toBeVisible();
 
   // Only those left out by hand go back; the rules' own exclusions stay
@@ -231,7 +230,7 @@ test("tax deduction: ticked donors move to Left out and back", async ({ page }) 
   await page.getByRole("button", { name: "Move back to Gets the notice" }).click();
   await expect
     .poll(() => calls.status?.[1])
-    .toEqual({ year: lastYear, donorIds: [30], status: "notice" });
+    .toEqual({ year: thisYear, donorIds: [30], status: "notice" });
 
   // Sent donors can't be ticked
   await page.getByRole("radio", { name: "Sent (1)" }).click();
@@ -282,7 +281,7 @@ test("tax deduction: the XML needs contact details and the CSV, shows errors and
   const request = page.waitForRequest((r) => r.url().includes("reports.tax.skatteetaten"));
   await download.click();
   const body = (await request).postData() ?? "";
-  expect(body).toContain(`name="year"\r\n\r\n${lastYear}`);
+  expect(body).toContain(`name="year"\r\n\r\n${thisYear}`);
   expect(body).toContain('name="minSum"\r\n\r\n500');
   expect(body).toContain('filename="giverportal.csv"');
   await expect(page.getByText("No file was made")).toBeVisible();
@@ -290,7 +289,7 @@ test("tax deduction: the XML needs contact details and the CSV, shows errors and
 
   result.current = {
     file: {
-      filename: `skattefradrag_${lastYear}.xml`,
+      filename: `skattefradrag_${thisYear}.xml`,
       contentType: "application/xml",
       content: "<x/>",
     },
@@ -301,7 +300,7 @@ test("tax deduction: the XML needs contact details and the CSV, shows errors and
   };
   const file = page.waitForEvent("download");
   await download.click();
-  expect((await file).suggestedFilename()).toBe(`skattefradrag_${lastYear}.xml`);
+  expect((await file).suggestedFilename()).toBe(`skattefradrag_${thisYear}.xml`);
   await expect(page.getByText("File downloaded")).toBeVisible();
 
   // Contact details are remembered after a reload

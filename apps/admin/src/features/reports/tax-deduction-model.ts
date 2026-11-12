@@ -6,9 +6,12 @@
 /** Gifts below this per tax unit and year give no deduction and are not reported */
 export const TAX_MIN_SUM = 500;
 
-/** The report is made in January for the year before */
+/**
+ * The page opens on the running year, to follow its figures and lists while gifts come in. The
+ * report in January is for the year before: pick it in the year selector.
+ */
 export function defaultTaxYear(today = new Date()): number {
-  return today.getFullYear() - 1;
+  return today.getFullYear();
 }
 
 /**
