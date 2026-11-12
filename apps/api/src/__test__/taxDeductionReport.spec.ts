@@ -364,8 +364,8 @@ describe("Tax report overview", () => {
       ],
     );
     expect(overview.sentNoLongerWithout).to.equal(1);
-    // Names, but no donor email addresses
-    expect(JSON.stringify(overview)).to.not.contain("donor20@example.org");
+    // With the email address, to judge who should get the notice
+    expect(overview.withoutTaxUnit[0].email).to.equal("donor20@example.org");
   });
 
   it("says when the year's limits are not in the code", async () => {

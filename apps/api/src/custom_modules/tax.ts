@@ -161,12 +161,13 @@ export type TaxReportOverview = {
   };
   /**
    * Donors with at least minSum in the year on distributions without a tax unit, and whether
-   * they get the missing tax unit notice, are left out (and why) or have been sent it. Names, no
-   * email addresses.
+   * they get the missing tax unit notice, are left out (and why) or have been sent it, with name
+   * and email address (to judge who should get it).
    */
   withoutTaxUnit: {
     donorId: number;
     name: string | null;
+    email: string | null;
     donationsSum: string;
     fundraiserSum: string;
     donations: number;
@@ -295,6 +296,7 @@ export async function getTaxReportOverview(
     withoutTaxUnit: classifyDonorsWithoutTaxUnit(withoutTaxUnit, minSum, notices).map((donor) => ({
       donorId: donor.donorId,
       name: donor.name,
+      email: donor.email,
       donationsSum: donor.donationsSum,
       fundraiserSum: donor.fundraiserSum,
       donations: donor.donations,

@@ -32,6 +32,7 @@ const overview = (year: number, difference = "0.00") => ({
   withoutTaxUnit: [
     {
       donorId: 20,
+      email: "test.giver@example.org",
       name: "Test Giver",
       donationsSum: "1000.30",
       fundraiserSum: "0.00",
@@ -45,6 +46,7 @@ const overview = (year: number, difference = "0.00") => ({
     },
     {
       donorId: 1464,
+      email: "anonym@example.org",
       name: "Anonym giver",
       donationsSum: "90000.00",
       fundraiserSum: "85000.00",
@@ -58,6 +60,7 @@ const overview = (year: number, difference = "0.00") => ({
     },
     {
       donorId: 30,
+      email: "linjeforening@example.org",
       name: "Linjeforening Testinnsamling",
       donationsSum: "4000.00",
       fundraiserSum: "4000.00",
@@ -71,6 +74,7 @@ const overview = (year: number, difference = "0.00") => ({
     },
     {
       donorId: 40,
+      email: "sendt@example.org",
       name: "Sendt Testesen",
       donationsSum: "700.00",
       fundraiserSum: "0.00",
@@ -154,6 +158,9 @@ test("tax deduction: control figures, deviation lists without national IDs, year
   // Search by name or donor ID
   await page.getByLabel("Search donors").fill("linjeforening");
   await expect(without.getByRole("row")).toHaveCount(2);
+  await page.getByLabel("Search donors").fill("linjeforening@example");
+  await expect(without.getByRole("row")).toHaveCount(2);
+  await expect(without).toContainText("linjeforening@example.org");
   await page.getByLabel("Search donors").fill("#40");
   await expect(without.getByRole("row", { name: /#40/ })).toBeVisible();
   await page.getByLabel("Search donors").fill("");

@@ -337,6 +337,18 @@ const withoutColumns = withoutCol.columns([
       </span>
     ),
   }),
+  withoutCol.accessor("email", {
+    header: "Email",
+    meta: { cellClassName: "max-w-64 text-muted-foreground" },
+    cell: ({ row }) =>
+      row.original.email ? (
+        <span className="block truncate" title={row.original.email}>
+          {row.original.email}
+        </span>
+      ) : (
+        "–"
+      ),
+  }),
   withoutCol.accessor((row) => Number(row.donationsSum), {
     id: "donationsSum",
     header: "Without tax unit",
@@ -371,12 +383,17 @@ const withoutColumns = withoutCol.columns([
   }),
 ]);
 
-/** Name or donor ID, for finding e.g. a student association's fundraiser in a long list */
+/**
+ * Name, email or donor ID, for finding e.g. a student association's fundraiser, or a company
+ * address, in a long list
+ */
 const matches = (row: WithoutRow, search: string) => {
   const term = search.trim().toLowerCase();
   if (!term) return true;
   return (
-    String(row.donorId) === term.replace(/^#/, "") || (row.name ?? "").toLowerCase().includes(term)
+    String(row.donorId) === term.replace(/^#/, "") ||
+    (row.name ?? "").toLowerCase().includes(term) ||
+    (row.email ?? "").toLowerCase().includes(term)
   );
 };
 
@@ -443,7 +460,7 @@ function WithoutTaxUnit({ overview }: { overview: Overview }) {
           <Input
             type="search"
             aria-label="Search donors"
-            placeholder="Search name or donor ID"
+            placeholder="Search name, email or donor ID"
             className="max-w-xs"
             value={search}
             onChange={(event) => {
