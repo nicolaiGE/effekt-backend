@@ -398,6 +398,93 @@ async function deleteById(_id: number, _donorId: number, _transferId?: number): 
 }
 
 //endregion
+export type DonorForComparison = {
+  id: number;
+  name: string | null;
+  email: string;
+  registered: Date;
+  trashed: boolean;
+  donations: number;
+  /** Decimal string: all the donor's confirmed donations */
+  donationsSum: string;
+  lastDonation: Date | null;
+  /** KIDs (distributions) */
+  kids: number;
+  /** AvtaleGiro and Vipps agreements, and how many of them are active */
+  agreements: number;
+  activeAgreements: number;
+  taxUnits: { id: number; name: string; ssn: string | null; archived: boolean }[];
+};
+
+/**
+ * What an admin needs to judge whether donors are one person, and what a merge would move:
+ * contact details, donations, KIDs, agreements and tax units per donor
+ */
+async function getDonorsForComparison(donorIds: number[]): Promise<DonorForComparison[]> {
+  if (donorIds.length === 0) return [];
+  const [donors] = await DAO.query<RowDataPacket[]>(
+    `
+    SELECT
+      D.ID as id,
+      D.full_name as name,
+      D.email,
+      D.date_registered as registered,
+      D.trash,
+      (SELECT COUNT(*) FROM Donations WHERE Donations.Donor_ID = D.ID) as donations,
+      (SELECT COALESCE(SUM(sum_confirmed), 0) FROM Donations WHERE Donations.Donor_ID = D.ID)
+        as donationsSum,
+      (SELECT MAX(timestamp_confirmed) FROM Donations WHERE Donations.Donor_ID = D.ID)
+        as lastDonation,
+      (SELECT COUNT(*) FROM Distributions WHERE Distributions.Donor_ID = D.ID) as kids,
+      (SELECT COUNT(*) FROM Avtalegiro_agreements AS AG
+        INNER JOIN Distributions AS DI ON DI.KID = AG.KID
+        WHERE DI.Donor_ID = D.ID) as avtalegiro,
+      (SELECT COUNT(*) FROM Avtalegiro_agreements AS AG
+        INNER JOIN Distributions AS DI ON DI.KID = AG.KID
+        WHERE DI.Donor_ID = D.ID AND AG.active = 1 AND AG.cancelled IS NULL) as avtalegiroActive,
+      (SELECT COUNT(*) FROM Vipps_agreements AS VA WHERE VA.donorID = D.ID) as vipps,
+      (SELECT COUNT(*) FROM Vipps_agreements AS VA
+        WHERE VA.donorID = D.ID AND UPPER(VA.status) = 'ACTIVE') as vippsActive
+
+      FROM Donors as D
+      WHERE D.ID IN (?)
+    `,
+    [donorIds],
+  );
+  const [units] = await DAO.query<RowDataPacket[]>(
+    `SELECT ID as id, Donor_ID as donorId, full_name as name, ssn, archived
+     FROM Tax_unit WHERE Donor_ID IN (?) ORDER BY ID`,
+    [donorIds],
+  );
+  return donorIds.flatMap((donorId) => {
+    const row = donors.find((donor) => Number(donor.id) === donorId);
+    if (!row) return [];
+    return [
+      {
+        id: donorId,
+        name: row.name ?? null,
+        email: String(row.email),
+        registered: row.registered,
+        trashed: Boolean(row.trash),
+        donations: Number(row.donations),
+        donationsSum: String(row.donationsSum),
+        lastDonation: row.lastDonation ?? null,
+        kids: Number(row.kids),
+        agreements: Number(row.avtalegiro) + Number(row.vipps),
+        activeAgreements: Number(row.avtalegiroActive) + Number(row.vippsActive),
+        taxUnits: units
+          .filter((unit) => Number(unit.donorId) === donorId)
+          .map((unit) => ({
+            id: Number(unit.id),
+            name: String(unit.name ?? ""),
+            ssn: unit.ssn ?? null,
+            archived: unit.archived !== null && unit.archived !== undefined,
+          })),
+      },
+    ];
+  });
+}
+
 export const tax = {
   getById,
   getByDonorId,
@@ -408,6 +495,7 @@ export const tax = {
   getTaxXMLReportUnits,
   getDonationTotalsInYear,
   getDonorsWithoutTaxUnitInYear,
+  getDonorsForComparison,
   addTaxUnit,
   updateTaxUnit,
   deleteById,

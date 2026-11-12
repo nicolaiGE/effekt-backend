@@ -118,6 +118,11 @@ export const skatteetatenXmlInput = formDataInput({
   smsNumber: requiredText("SMS number", 20),
 });
 
+/** Donors to compare before merging, e.g. the donors sharing a national ID */
+export const taxCompareDonorsInput = z.strictObject({
+  donorIds: z.array(z.number().int().positive()).min(2).max(10),
+});
+
 /** Moves donors to "Left out" (excluded) or back to "Gets the notice" for the year */
 export const taxNoticeStatusInput = z.strictObject({
   year: taxYear,

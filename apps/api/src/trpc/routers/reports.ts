@@ -7,7 +7,11 @@ import type {
 } from "../../custom_modules/DAO_modules/logging";
 import { buildKu65Report } from "../../custom_modules/ku65";
 import { sendMissingTaxUnitNotices } from "../../custom_modules/missingTaxUnitNotices";
-import { createXMLReportToTaxAuthorities, getTaxReportOverview } from "../../custom_modules/tax";
+import {
+  compareDonors,
+  createXMLReportToTaxAuthorities,
+  getTaxReportOverview,
+} from "../../custom_modules/tax";
 import { osloDayEnd, osloDayRange, osloDayStart } from "../../custom_modules/osloDays";
 import {
   processBankNoReport,
@@ -24,6 +28,7 @@ import {
   ku65Input,
   missingTaxUnitNoticeInput,
   taxNoticeStatusInput,
+  taxCompareDonorsInput,
   skatteetatenXmlInput,
   taxOverviewInput,
   logsListInput,
@@ -385,6 +390,14 @@ const taxRouter = router({
         : await DAO.taxunitnotices.include(input.year, input.donorIds);
     return { changed };
   }),
+
+  /**
+   * Donors side by side (contact details, donations, KIDs, agreements, masked tax units), to judge
+   * whether they are one person before merging them with donors.merge
+   */
+  compareDonors: adminProcedure
+    .input(taxCompareDonorsInput)
+    .query(({ input }) => compareDonors(input.donorIds)),
 
   /** Swedish KU65 XML (Skatteverket) from a CSV of donation sums per personnummer */
   ku65: adminProcedure.input(ku65Input).mutation(async ({ input }) => {

@@ -44,6 +44,7 @@ import { sumMoney } from "@/lib/money";
 import { usePersistentState } from "@/lib/persistent-store";
 import { usePageQuery } from "@/lib/query";
 import { useTRPC, type RouterOutputs } from "@/lib/trpc";
+import { CompareDuplicates } from "./tax-duplicate-compare";
 import {
   defaultTaxYear,
   emptyTaxContact,
@@ -571,9 +572,9 @@ function Duplicates({ overview }: { overview: Overview }) {
       title="Possible duplicate donors"
       description={
         <p>
-          The same national ID on several donors is reported once, with the gifts added up. Merge
-          the donors if they are one person. Several tax units on one donor can be right (a person
-          and their company).
+          The same national ID on several donors is reported once, with the gifts added up. Compare
+          them, and merge the donors if they are one person. Several tax units on one donor can be
+          right (a person and their company).
         </p>
       }
     >
@@ -587,6 +588,9 @@ function Duplicates({ overview }: { overview: Overview }) {
             <TableHead>Why</TableHead>
             <TableHead className="text-right">Tax units</TableHead>
             <TableHead className="text-right">Sum</TableHead>
+            <TableHead>
+              <span className="sr-only">Actions</span>
+            </TableHead>
           </>
         }
       >
@@ -603,6 +607,9 @@ function Duplicates({ overview }: { overview: Overview }) {
             <TableCell className="num text-right">{row.taxUnitIds.length}</TableCell>
             <TableCell className="text-right">
               <Money value={row.sum} />
+            </TableCell>
+            <TableCell className="text-right">
+              {row.reason === "sameNumber" && <CompareDuplicates donorIds={row.donorIds} />}
             </TableCell>
           </TableRow>
         ))}

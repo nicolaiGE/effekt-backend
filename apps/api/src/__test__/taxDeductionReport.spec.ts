@@ -19,6 +19,7 @@ import { osloYearRange } from "../custom_modules/osloDays";
 import { LAST_UTC_TAX_YEAR, taxYearRange } from "../custom_modules/DAO_modules/tax";
 import {
   createXMLReportToTaxAuthorities,
+  compareDonors,
   getTaxReportOverview,
   groupTaxUnitsBySsn,
 } from "../custom_modules/tax";
@@ -694,5 +695,33 @@ describe("tRPC reports.tax", () => {
     }
     expect(error?.message).to.match(/confirmYear/);
     expect(send.callCount).to.equal(0);
+  });
+});
+
+describe("Comparing possible duplicate donors", () => {
+  afterEach(() => sinon.restore());
+
+  it("returns the donors side by side with the numbers masked", async () => {
+    sinon.stub(DAO.tax, "getDonorsForComparison").resolves([
+      {
+        id: 10,
+        name: "Donor 10",
+        email: "donor10@example.org",
+        registered: new Date("2024-01-01T00:00:00Z"),
+        trashed: false,
+        donations: 3,
+        donationsSum: "300.00",
+        lastDonation: null,
+        kids: 1,
+        agreements: 0,
+        activeAgreements: 0,
+        taxUnits: [{ id: 1, name: "Unit 1", ssn: PERSON_A, archived: false }],
+      },
+    ]);
+    const [donor] = await compareDonors([10, 11]);
+    expect(donor.taxUnits).to.deep.equal([
+      { id: 1, name: "Unit 1", maskedNumber: `${PERSON_A.slice(0, 4)}•••••••`, archived: false },
+    ]);
+    expect(JSON.stringify(donor)).to.not.contain(PERSON_A);
   });
 });

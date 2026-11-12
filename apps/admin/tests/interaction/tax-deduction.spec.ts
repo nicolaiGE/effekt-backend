@@ -328,3 +328,65 @@ test("tax deduction: the XML needs contact details and the CSV, shows errors and
   await page.reload();
   await expect(page.getByLabel("Contact person")).toHaveValue("Test Testesen");
 });
+
+test("tax deduction: compare possible duplicates and merge into the donor to keep", async ({
+  page,
+}) => {
+  const compared: unknown[] = [];
+  const merged: unknown[] = [];
+  const donor = (id: number, email: string, donations: number) => ({
+    id,
+    name: "Dobbel Testesen",
+    email,
+    registered: "2024-03-01T10:00:00.000Z",
+    trashed: false,
+    donations,
+    donationsSum: `${donations * 100}.00`,
+    lastDonation: "2026-10-01T10:00:00.000Z",
+    kids: 2,
+    agreements: 1,
+    activeAgreements: id === 10 ? 1 : 0,
+    taxUnits: [{ id, name: "Dobbel Testesen", maskedNumber: "0101•••••••", archived: false }],
+  });
+  await stubAnalysisApi(page, {
+    overrides: {
+      "reports.tax.overview": (input) => overview((input as { year: number }).year),
+      "reports.tax.compareDonors": (input) => {
+        compared.push(input);
+        return [donor(10, "dobbel@example.org", 5), donor(11, "dobbel.gammel@example.org", 2)];
+      },
+      "donors.merge": (input) => {
+        merged.push(input);
+        return true;
+      },
+    },
+  });
+  await page.goto("/login");
+  await page.getByRole("button", { name: /dev token/i }).click();
+  await page.waitForURL("/");
+  await page.goto("/reports?section=tax-deduction");
+
+  const duplicates = page.getByRole("table", { name: "Possible duplicate donors" });
+  await duplicates.getByRole("button", { name: "Compare" }).click();
+  const dialog = page.getByRole("dialog", { name: "Compare donors #10 and #11" });
+  await expect.poll(() => compared[0]).toEqual({ donorIds: [10, 11] });
+  const table = dialog.getByRole("table", { name: "Donors compared" });
+  await expect(table).toContainText("dobbel@example.org");
+  await expect(table).toContainText("dobbel.gammel@example.org");
+  await expect(table).toContainText("0101•••••••");
+  await expect(table).toContainText("1 (1 active)");
+
+  // Nothing merges before the donor to keep is picked and its id typed
+  await expect(dialog.getByRole("button", { name: "Pick the donor to keep" })).toBeDisabled();
+  await dialog.getByRole("radio", { name: /Keep #10/ }).click();
+  await dialog.getByRole("button", { name: "Merge into #10" }).click();
+  const confirm = page.getByRole("alertdialog");
+  await expect(confirm).toContainText(
+    "2 donations, 1 agreement, 1 tax unit and 2 KIDs move to #10",
+  );
+  await expect(confirm).toContainText("#11 (dobbel.gammel@example.org) is deleted");
+  await confirm.getByLabel(/to confirm/).fill("10");
+  await confirm.getByRole("button", { name: "Merge into #10" }).click();
+  await expect.poll(() => merged).toEqual([{ originId: 11, destinationId: 10 }]);
+  await expect(page.getByText("Donors merged")).toBeVisible();
+});

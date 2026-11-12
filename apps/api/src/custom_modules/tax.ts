@@ -4,7 +4,7 @@ import { donationHelpers } from "./donationHelpers";
 import { validateXML } from "xmllint-wasm";
 import { Decimal } from "decimal.js";
 import { EANTaxUnitsRow, parseEanTaxUnits } from "./parsers/eanTaxUnits";
-import type { TaxUnitYearSum } from "./DAO_modules/tax";
+import type { DonorForComparison, TaxUnitYearSum } from "./DAO_modules/tax";
 import {
   classifyDonorsWithoutTaxUnit,
   noticeExclusionLabels,
@@ -594,3 +594,23 @@ export const validateXml = async (
     errors: result.errors.map((e) => e.message.replace(/^Schemas validity error : /, "").trim()),
   };
 };
+
+/** One donor in compareDonors, with the tax units' numbers masked */
+export type DonorComparison = Omit<DonorForComparison, "taxUnits"> & {
+  taxUnits: { id: number; name: string; maskedNumber: string; archived: boolean }[];
+};
+
+/**
+ * The donors side by side, to judge whether they are one person before merging (Possible
+ * duplicate donors). Numbers are masked like the other lists on the page.
+ */
+export async function compareDonors(donorIds: number[]): Promise<DonorComparison[]> {
+  const donors = await DAO.tax.getDonorsForComparison(donorIds);
+  return donors.map((donor) => ({
+    ...donor,
+    taxUnits: donor.taxUnits.map(({ ssn, ...unit }) => ({
+      ...unit,
+      maskedNumber: maskIdNumberForList(ssn),
+    })),
+  }));
+}
