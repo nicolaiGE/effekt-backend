@@ -735,12 +735,15 @@ model Tax_unit {
 
 /// The missing tax unit notice per donor and gift year (Reports › Tax deduction)
 model Tax_unit_notices {
-  ID         Int      @id @default(autoincrement())
-  Donor_ID   Int
-  Year       Int /// Gift year the notice is about
-  Status     String   @db.VarChar(16) /// excluded (left out by an admin) | sent
-  Updated_by String   @db.VarChar(255) /// Admin (JWT email or sub) who left the donor out or sent it
-  Updated    DateTime @default(now()) @db.DateTime(0)
+  ID               Int       @id @default(autoincrement())
+  Donor_ID         Int
+  Year             Int /// Gift year the notice is about
+  Status           String    @db.VarChar(16) /// excluded (left out by an admin) | sent
+  Updated_by       String    @db.VarChar(255) /// Admin (JWT email or sub) who left the donor out or sent it
+  Updated          DateTime  @default(now()) @db.DateTime(0)
+  Reminders        Int       @default(0) /// Reminders sent after the notice
+  Last_reminded    DateTime? @db.DateTime(0)
+  Last_reminded_by String?   @db.VarChar(255) /// Admin (JWT email or sub) who sent the last reminder
 
   Donors Donors @relation(fields: [Donor_ID], references: [ID], onDelete: Cascade, onUpdate: Cascade, map: "fk_Tax_unit_notices_to_Donors")
 

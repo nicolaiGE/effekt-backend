@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { DownloadIcon, MailIcon } from "lucide-react";
+import { DownloadIcon } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import {
   cellPlaceholder,
@@ -9,7 +9,6 @@ import {
   type RowSelectionState,
 } from "@/components/data-table";
 import { Callout } from "@/components/domain/callout";
-import { ConfirmDialog } from "@/components/domain/confirm-dialog";
 import { EmptyState } from "@/components/domain/empty-state";
 import { describeError, ErrorState } from "@/components/domain/error-state";
 import { FileDropzone } from "@/components/domain/file-dropzone";
@@ -29,7 +28,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
 import {
   Table,
   TableBody,
@@ -45,6 +43,7 @@ import { usePersistentState } from "@/lib/persistent-store";
 import { usePageQuery } from "@/lib/query";
 import { useTRPC, type RouterOutputs } from "@/lib/trpc";
 import { CompareDuplicates } from "./tax-duplicate-compare";
+import { NoticeSend } from "./tax-notice-send";
 import {
   defaultTaxYear,
   emptyTaxContact,
@@ -372,7 +371,18 @@ const withoutColumns = withoutCol.columns([
     enableSorting: false,
     cell: ({ row }) => {
       const donor = row.original;
-      if (donor.status === "sent") return <span>Sent {whoAndWhen(donor)}</span>;
+      if (donor.status === "sent")
+        return (
+          <span>
+            Sent {whoAndWhen(donor)}
+            {donor.reminders > 0 && (
+              <span className="block text-muted-foreground">
+                {plural(donor.reminders, "reminder")}, last{" "}
+                {donor.lastReminded && <DateTime value={donor.lastReminded} format="date" />}
+              </span>
+            )}
+          </span>
+        );
       if (donor.status === "notice") return "Gets it";
       return (
         <span className="text-muted-foreground">
@@ -409,8 +419,9 @@ function WithoutTaxUnit({ overview }: { overview: Overview }) {
     sent: all.filter((row) => row.status === "sent"),
     all,
   };
+  const remindable = byStatus.sent.filter((row) => row.canRemind);
   const rows = byStatus[filter].filter((row) => matches(row, search));
-  const selectable = filter === "notice" || filter === "excluded";
+  const selectable = filter !== "all";
   const min = <Money value={String(overview.minSum)} precision="whole" />;
   return (
     <SettingsSection
@@ -429,17 +440,29 @@ function WithoutTaxUnit({ overview }: { overview: Overview }) {
           </p>
           <p className="mt-2">
             Tick donors and move them to “Left out” to skip them, for example a student
-            association's fundraiser. Donors who get the notice move to “Sent”, so a later round
-            only goes to the rest. Both are saved for everyone.
+            association's fundraiser, or send the notice to the ticked donors only. Donors who get
+            the notice move to “Sent”, so a later round only goes to the rest. A reminder goes to
+            donors in “Sent” who still have no tax unit. All of it is saved for everyone.
           </p>
         </>
       }
       actions={
-        <MissingTaxUnitNotice
-          year={overview.year}
-          minSum={overview.minSum}
-          recipients={byStatus.notice.length}
-        />
+        <div className="flex flex-wrap gap-2">
+          <NoticeSend
+            year={overview.year}
+            minSum={overview.minSum}
+            round="notice"
+            recipients={byStatus.notice.length}
+            label="Send missing tax unit notice"
+          />
+          <NoticeSend
+            year={overview.year}
+            minSum={overview.minSum}
+            round="reminder"
+            recipients={remindable.length}
+            label="Send reminder"
+          />
+        </div>
       }
     >
       <div className="grid gap-3">
@@ -490,14 +513,17 @@ function WithoutTaxUnit({ overview }: { overview: Overview }) {
             {...(selectable && {
               rowSelection: selection,
               onRowSelectionChange: setSelection,
-              selectionActions: (ids: string[]) => (
-                <MoveNoticeStatus
-                  year={overview.year}
-                  rows={rows.filter((row) => ids.includes(String(row.donorId)))}
-                  to={filter === "notice" ? "excluded" : "notice"}
-                  onDone={() => setSelection({})}
-                />
-              ),
+              selectionActions: (ids: string[]) => {
+                const ticked = rows.filter((row) => ids.includes(String(row.donorId)));
+                return (
+                  <SelectionActions
+                    overview={overview}
+                    filter={filter}
+                    rows={ticked}
+                    onDone={() => setSelection({})}
+                  />
+                );
+              },
             })}
             empty={
               <EmptyState
@@ -509,6 +535,65 @@ function WithoutTaxUnit({ overview }: { overview: Overview }) {
         </div>
       </div>
     </SettingsSection>
+  );
+}
+
+/** Footer actions for the ticked donors, by list: move, send the notice, or remind */
+function SelectionActions({
+  overview,
+  filter,
+  rows,
+  onDone,
+}: {
+  overview: Overview;
+  filter: NoticeFilter;
+  rows: WithoutRow[];
+  onDone: () => void;
+}) {
+  if (filter === "sent") {
+    const remindable = rows.filter((row) => row.canRemind);
+    return (
+      <div className="flex flex-wrap items-center gap-3">
+        {remindable.length < rows.length && (
+          <span className="text-sm text-muted-foreground">
+            {plural(rows.length - remindable.length, "donor")} the rules now leave out can't be
+            reminded
+          </span>
+        )}
+        <NoticeSend
+          year={overview.year}
+          minSum={overview.minSum}
+          round="reminder"
+          donorIds={remindable.map((row) => row.donorId)}
+          recipients={remindable.length}
+          label="Send reminder to ticked"
+          size="sm"
+          onSent={onDone}
+        />
+      </div>
+    );
+  }
+  return (
+    <div className="flex flex-wrap items-center gap-3">
+      <MoveNoticeStatus
+        year={overview.year}
+        rows={rows}
+        to={filter === "notice" ? "excluded" : "notice"}
+        onDone={onDone}
+      />
+      {filter === "notice" && (
+        <NoticeSend
+          year={overview.year}
+          minSum={overview.minSum}
+          round="notice"
+          donorIds={rows.map((row) => row.donorId)}
+          recipients={rows.length}
+          label="Send notice to ticked"
+          size="sm"
+          onSent={onDone}
+        />
+      )}
+    </div>
   );
 }
 
@@ -676,132 +761,6 @@ function InvalidNumbers({ overview }: { overview: Overview }) {
         ))}
       </ListTable>
     </SettingsSection>
-  );
-}
-
-//endregion
-
-//region Missing tax unit notice
-
-function MissingTaxUnitNotice({
-  year,
-  minSum,
-  recipients,
-}: {
-  year: number;
-  minSum: number;
-  /** Donors the notice goes to; one email per address, so the sent count can be lower */
-  recipients: number;
-}) {
-  const trpc = useTRPC();
-  const queryClient = useQueryClient();
-  const [open, setOpen] = useState(false);
-  const [testMode, setTestMode] = useState(true);
-  const [testEmail, setTestEmail] = useState("");
-  const [testLimit, setTestLimit] = useState("3");
-  const send = useMutation(trpc.reports.tax.missingTaxUnitNotice.mutationOptions());
-  const limit = Number(testLimit);
-  const testInvalid =
-    testMode &&
-    (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(testEmail.trim()) ||
-      !Number.isInteger(limit) ||
-      limit < 1 ||
-      limit > 100);
-
-  return (
-    <>
-      <ConfirmDialog
-        open={open}
-        onOpenChange={(next) => {
-          setOpen(next);
-          if (next) send.reset();
-        }}
-        trigger={
-          <Button>
-            <MailIcon />
-            Send missing tax unit notice
-          </Button>
-        }
-        title={
-          testMode
-            ? `Send a test of the missing tax unit notice for ${year}?`
-            : `Email ${plural(recipients, "donor")} without tax unit for ${year}?`
-        }
-        consequences={
-          testMode
-            ? [
-                `The notices for the ${limit || "first"} largest donors in “Gets the notice” go to the test address, not to the donors.`,
-                "Nobody is moved to “Sent”.",
-              ]
-            : [
-                `${plural(recipients, "donor")} in “Gets the notice” get the email (one per address).`,
-                "Those it reaches move to “Sent”, so a later sending skips them.",
-                "It can't be undone. Sending takes about a second per ten donors.",
-              ]
-        }
-        confirmLabel={testMode ? "Send test" : "Send to donors"}
-        tone={testMode ? "default" : "danger"}
-        confirmText={testMode ? undefined : String(year)}
-        disabled={testInvalid || recipients === 0}
-        onConfirm={async () => {
-          await send.mutateAsync({
-            year,
-            minSum,
-            ...(testMode
-              ? { testEmail: testEmail.trim(), testLimit: limit }
-              : { confirmYear: year }),
-          });
-          if (!testMode)
-            await queryClient.invalidateQueries({
-              queryKey: trpc.reports.tax.overview.queryKey(),
-            });
-        }}
-      >
-        <div className="grid gap-4">
-          <div className="flex items-center gap-2">
-            <Switch id="notice-test-mode" checked={testMode} onCheckedChange={setTestMode} />
-            <Label htmlFor="notice-test-mode">Test mode</Label>
-          </div>
-          {testMode && (
-            <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_7rem]">
-              <Field label="Send to">
-                <Input
-                  type="email"
-                  value={testEmail}
-                  onChange={(event) => setTestEmail(event.target.value)}
-                  placeholder="you@gieffektivt.no"
-                />
-              </Field>
-              <Field label="Donors">
-                <Input
-                  inputMode="numeric"
-                  value={testLimit}
-                  onChange={(event) => setTestLimit(event.target.value)}
-                />
-              </Field>
-            </div>
-          )}
-        </div>
-      </ConfirmDialog>
-      {send.data && (
-        <Callout
-          tone={send.data.failed > 0 ? "warning" : "success"}
-          title={
-            send.data.success === 0
-              ? "Nothing was sent"
-              : send.data.testMode
-                ? "Test sent"
-                : "Notices sent"
-          }
-        >
-          {plural(send.data.success, "email")} sent
-          {send.data.failed > 0 ? `, ${send.data.failed} failed` : ""}, of {send.data.total}.
-          {!send.data.testMode &&
-            send.data.donorsMarkedSent > 0 &&
-            ` ${plural(send.data.donorsMarkedSent, "donor")} moved to Sent.`}
-        </Callout>
-      )}
-    </>
   );
 }
 

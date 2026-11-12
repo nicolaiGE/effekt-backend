@@ -18,12 +18,17 @@ export type TaxUnitNoticeRow = {
   /** Admin (JWT email or sub) who left the donor out or sent it */
   updatedBy: string;
   updated: Date;
+  /** Reminders sent after the notice, and the last one */
+  reminders: number;
+  lastReminded: Date | null;
+  lastRemindedBy: string | null;
 };
 
 async function getForYear(year: number): Promise<TaxUnitNoticeRow[]> {
   const [rows] = await DAO.query<RowDataPacket[]>(
     `SELECT Donor_ID AS donorId, Status AS status, Updated_by AS updatedBy,
-       ${dbClockColumn("Updated", "updated")}
+       ${dbClockColumn("Updated", "updated")}, Reminders AS reminders,
+       ${dbClockColumn("Last_reminded", "lastReminded")}, Last_reminded_by AS lastRemindedBy
      FROM Tax_unit_notices
      WHERE Year = ?`,
     [year],
@@ -33,6 +38,9 @@ async function getForYear(year: number): Promise<TaxUnitNoticeRow[]> {
     status: row.status as TaxUnitNoticeStatus,
     updatedBy: String(row.updatedBy),
     updated: row.updated,
+    reminders: Number(row.reminders ?? 0),
+    lastReminded: row.lastReminded ?? null,
+    lastRemindedBy: row.lastRemindedBy ?? null,
   }));
 }
 
@@ -69,4 +77,15 @@ async function markSent(year: number, donorIds: number[], actor: string): Promis
   );
 }
 
-export const taxunitnotices = { getForYear, exclude, include, markSent };
+/** Records a reminder to donors who were sent the year's notice */
+async function markReminded(year: number, donorIds: number[], actor: string): Promise<void> {
+  if (donorIds.length === 0) return;
+  await DAO.query(
+    `UPDATE Tax_unit_notices
+     SET Reminders = Reminders + 1, Last_reminded = NOW(), Last_reminded_by = ?
+     WHERE Year = ? AND Status = 'sent' AND Donor_ID IN (?)`,
+    [actor, year, donorIds],
+  );
+}
+
+export const taxunitnotices = { getForYear, exclude, include, markSent, markReminded };

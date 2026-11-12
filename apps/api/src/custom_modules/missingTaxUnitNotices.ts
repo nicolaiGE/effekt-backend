@@ -6,10 +6,11 @@ import * as mail from "./mail";
 import type { EligibleDonor } from "./mail";
 import {
   type MissingTaxUnitNoticeOptions,
+  type NoticeRound,
   noticeOptionsProblem,
 } from "./missingTaxUnitNoticeOptions";
 
-export { type MissingTaxUnitNoticeOptions, noticeOptionsProblem };
+export { type MissingTaxUnitNoticeOptions, type NoticeRound, noticeOptionsProblem };
 
 /** The shared donor for gifts without contact details (see also vipps.ts and amf.ts) */
 export const ANONYMOUS_DONOR_ID = 1464;
@@ -41,10 +42,18 @@ export type ClassifiedDonor = DonorWithoutTaxUnitRow & {
   noticeSum: string;
   /** Null when the donor gets the notice (or has had it) */
   exclusion: NoticeExclusion | null;
+  /**
+   * What the rules say now, even for a donor who has had the notice (deleted since, email gone,
+   * a tax unit added): a reminder skips them. Never "leftOut".
+   */
+  ruleExclusion: NoticeExclusion | null;
   status: NoticeStatus;
   /** When the donor was sent the notice or left out by hand, and by whom */
   statusBy: string | null;
   statusAt: Date | null;
+  /** Reminders after the notice, and when the last one went */
+  reminders: number;
+  lastReminded: Date | null;
 };
 
 /** Placeholder addresses for donors without email, our own addresses and auction buyers */
@@ -77,29 +86,31 @@ export function classifyDonorsWithoutTaxUnit(
       const email = (row.email ?? "").trim();
       const notice = noticeByDonor.get(row.donorId);
       const sent = notice?.status === "sent";
+      const ruleExclusion: NoticeExclusion | null = row.trashed
+        ? "trashed"
+        : row.donorId === ANONYMOUS_DONOR_ID
+          ? "anonymous"
+          : email === ""
+            ? "noEmail"
+            : isInternalEmail(email)
+              ? "internalEmail"
+              : row.taxUnits > 0
+                ? "hasTaxUnit"
+                : null;
       const exclusion: NoticeExclusion | null = sent
         ? null
-        : row.trashed
-          ? "trashed"
-          : row.donorId === ANONYMOUS_DONOR_ID
-            ? "anonymous"
-            : email === ""
-              ? "noEmail"
-              : isInternalEmail(email)
-                ? "internalEmail"
-                : row.taxUnits > 0
-                  ? "hasTaxUnit"
-                  : notice?.status === "excluded"
-                    ? "leftOut"
-                    : null;
+        : (ruleExclusion ?? (notice?.status === "excluded" ? "leftOut" : null));
       const status: NoticeStatus = sent ? "sent" : exclusion ? "excluded" : "notice";
       return {
         ...row,
         noticeSum: noticeSum.toFixed(2),
         exclusion,
+        ruleExclusion,
         status,
         statusBy: notice && (sent || exclusion === "leftOut") ? notice.updatedBy : null,
         statusAt: notice && (sent || exclusion === "leftOut") ? notice.updated : null,
+        reminders: notice?.reminders ?? 0,
+        lastReminded: notice?.lastReminded ?? null,
       };
     });
 }
@@ -107,15 +118,24 @@ export function classifyDonorsWithoutTaxUnit(
 /** A recipient of the notice, with the donors (one email address can have several) it covers */
 export type NoticeRecipient = EligibleDonor & { donorIds: number[] };
 
-/** The notice's recipients: the donors in "Gets the notice", one per email address, largest first */
+/**
+ * The round's recipients, one per email address, largest first: the donors in "Gets the notice"
+ * for the notice, the donors in "Sent" (still without tax unit) for a reminder. With donorIds,
+ * only those of them.
+ */
 export function noticeRecipients(
   donors: ClassifiedDonor[],
   excludedEmails: string[] = [],
+  { round = "notice", donorIds }: { round?: NoticeRound; donorIds?: number[] } = {},
 ): NoticeRecipient[] {
   const excluded = new Set(excludedEmails.map((email) => email.trim().toLowerCase()));
+  const only = donorIds ? new Set(donorIds) : null;
+  const status = round === "reminder" ? "sent" : "notice";
   const byEmail = new Map<string, NoticeRecipient>();
   for (const donor of donors) {
-    if (donor.status !== "notice") continue;
+    if (donor.status !== status) continue;
+    if (round === "reminder" && donor.ruleExclusion) continue;
+    if (only && !only.has(donor.donorId)) continue;
     const email = donor.email!.trim();
     const key = email.toLowerCase();
     if (excluded.has(key)) continue;
@@ -137,12 +157,13 @@ export function noticeRecipients(
 }
 
 export type MissingTaxUnitNoticeResult = {
+  round: NoticeRound;
   /** Emails to send (one per address) */
   total: number;
   success: number;
   failed: number;
   testMode: boolean;
-  /** Donors recorded as sent (real sendings only); a test records nothing */
+  /** Donors recorded as sent, or as reminded (real sendings only); a test records nothing */
   donorsMarkedSent: number;
 };
 
@@ -161,11 +182,14 @@ export async function sendMissingTaxUnitNotices(
     testEmail,
     testLimit,
     confirmYear,
+    round = "notice",
+    donorIds,
   }: MissingTaxUnitNoticeOptions,
   actor = "REST /mail/notice/missingtaxunit",
 ): Promise<MissingTaxUnitNoticeResult> {
   const problem = noticeOptionsProblem({ year, minSum, testEmail, testLimit, confirmYear });
   if (problem) throw new Error(problem);
+  const reminder = round === "reminder";
   const [rows, notices] = await Promise.all([
     DAO.tax.getDonorsWithoutTaxUnitInYear(year, minSum),
     DAO.taxunitnotices.getForYear(year),
@@ -173,6 +197,7 @@ export async function sendMissingTaxUnitNotices(
   let donorsWithDonationsMissingTaxUnit = noticeRecipients(
     classifyDonorsWithoutTaxUnit(rows, minSum, notices),
     excludedEmails,
+    { round, donorIds },
   );
   const testMode = !!testEmail;
   let donorsMarkedSent = 0;
@@ -214,7 +239,9 @@ export async function sendMissingTaxUnitNotices(
 
     const batchResults = await Promise.allSettled(
       // If testEmail is provided, override the donor's email for testing
-      batch.map((donor) => mail.sendMissingTaxUnitNotice(donor, year, testEmail || donor.email)),
+      batch.map((donor) =>
+        mail.sendMissingTaxUnitNotice(donor, year, testEmail || donor.email, { reminder }),
+      ),
     );
 
     const reached: number[] = [];
@@ -233,7 +260,8 @@ export async function sendMissingTaxUnitNotices(
     });
     // Recorded per batch, so a sending that stops halfway still knows who got it
     if (!testMode && reached.length > 0) {
-      await DAO.taxunitnotices.markSent(year, reached, actor);
+      if (reminder) await DAO.taxunitnotices.markReminded(year, reached, actor);
+      else await DAO.taxunitnotices.markSent(year, reached, actor);
       donorsMarkedSent += reached.length;
     }
   }
@@ -243,10 +271,80 @@ export async function sendMissingTaxUnitNotices(
   );
 
   return {
+    round,
     total: totalEmails,
     success: successfullySent,
     failed: failedToSend,
     testMode,
     donorsMarkedSent,
   };
+}
+
+export type MissingTaxUnitNoticePreview = {
+  round: NoticeRound;
+  /** Emails the round would send (one per address), and the donors they cover */
+  emails: number;
+  donors: number;
+  /** The first (largest) recipient, whose email is shown */
+  example: { donorIds: number[]; name: string; email: string; donationsSum: number } | null;
+  /** MailerSend template and the values filled into it for the example; null when none */
+  mail: mail.MissingTaxUnitNoticeMail | null;
+  /** Why the email could not be made for the example, e.g. no limits for the year */
+  problem: string | null;
+};
+
+/**
+ * What the round would send: how many, and the email for its first recipient (the template and
+ * the values filled in). Sends nothing and records nothing.
+ */
+export async function previewMissingTaxUnitNotice({
+  year,
+  minSum,
+  round = "notice",
+  donorIds,
+}: Pick<
+  MissingTaxUnitNoticeOptions,
+  "year" | "minSum" | "round" | "donorIds"
+>): Promise<MissingTaxUnitNoticePreview> {
+  const [rows, notices] = await Promise.all([
+    DAO.tax.getDonorsWithoutTaxUnitInYear(year, minSum),
+    DAO.taxunitnotices.getForYear(year),
+  ]);
+  const recipients = noticeRecipients(classifyDonorsWithoutTaxUnit(rows, minSum, notices), [], {
+    round,
+    donorIds,
+  });
+  const first = recipients[0];
+  const base = {
+    round,
+    emails: recipients.length,
+    donors: recipients.reduce((acc, recipient) => acc + recipient.donorIds.length, 0),
+  };
+  if (!first) return { ...base, example: null, mail: null, problem: null };
+  const example = {
+    donorIds: first.donorIds,
+    name: first.full_name,
+    email: first.email,
+    donationsSum: first.donationsSum,
+  };
+  try {
+    const built = await mail.buildMissingTaxUnitNotice(first, year, {
+      reminder: round === "reminder",
+    });
+    return {
+      ...base,
+      example,
+      mail: built,
+      problem: built
+        ? null
+        : `The email can't be made for ${year}: are the year's limits in the code?`,
+    };
+  } catch (ex) {
+    return {
+      ...base,
+      example,
+      mail: null,
+      problem: `The email can't be made: ${(ex as Error).message}`,
+    };
+  }
 }

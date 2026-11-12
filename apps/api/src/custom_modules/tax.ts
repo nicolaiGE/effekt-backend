@@ -178,6 +178,11 @@ export type TaxReportOverview = {
     /** Who sent the notice or left the donor out by hand, and when */
     statusBy: string | null;
     statusAt: Date | null;
+    /** Reminders sent after the notice, and the last one */
+    reminders: number;
+    lastReminded: Date | null;
+    /** Whether a reminder would go to the donor (sent, and the rules don't leave them out now) */
+    canRemind: boolean;
   }[];
   /**
    * Donors sent the notice for the year who are no longer in withoutTaxUnit: they have since
@@ -306,6 +311,9 @@ export async function getTaxReportOverview(
       status: donor.status,
       statusBy: donor.statusBy,
       statusAt: donor.statusAt,
+      reminders: donor.reminders,
+      lastReminded: donor.lastReminded,
+      canRemind: donor.status === "sent" && !donor.ruleExclusion,
     })),
     sentNoLongerWithout: notices.filter(
       (notice) => notice.status === "sent" && !stillWithout.has(notice.donorId),

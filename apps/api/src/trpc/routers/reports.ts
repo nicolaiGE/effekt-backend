@@ -6,7 +6,10 @@ import type {
   ImportLogUploadDetails,
 } from "../../custom_modules/DAO_modules/logging";
 import { buildKu65Report } from "../../custom_modules/ku65";
-import { sendMissingTaxUnitNotices } from "../../custom_modules/missingTaxUnitNotices";
+import {
+  previewMissingTaxUnitNotice,
+  sendMissingTaxUnitNotices,
+} from "../../custom_modules/missingTaxUnitNotices";
 import {
   compareDonors,
   createXMLReportToTaxAuthorities,
@@ -29,6 +32,7 @@ import {
   missingTaxUnitNoticeInput,
   taxNoticeStatusInput,
   taxCompareDonorsInput,
+  taxNoticePreviewInput,
   skatteetatenXmlInput,
   taxOverviewInput,
   logsListInput,
@@ -373,11 +377,20 @@ const taxRouter = router({
 
   /**
    * Emails the donors in "Gets the notice" (at least minSum without tax unit, not left out, not
-   * sent before). A real sending records who got it; a test records nothing.
+   * sent before), or with round "reminder" the donors in "Sent" who still have no tax unit. With
+   * donorIds only those. A real sending records who got it; a test records nothing.
    */
   missingTaxUnitNotice: adminProcedure
     .input(missingTaxUnitNoticeInput)
     .mutation(({ input, ctx }) => sendMissingTaxUnitNotices(input, adminIdentity(ctx.auth))),
+
+  /**
+   * What a sending would do, without sending: how many emails, and the template and values for
+   * the first recipient
+   */
+  noticePreview: adminProcedure
+    .input(taxNoticePreviewInput)
+    .query(({ input }) => previewMissingTaxUnitNotice(input)),
 
   /**
    * Leaves donors out of the year's notice, or puts them back. Donors who have been sent it stay

@@ -118,6 +118,14 @@ export const skatteetatenXmlInput = formDataInput({
   smsNumber: requiredText("SMS number", 20),
 });
 
+/** The notice as the first recipient of the round would get it */
+export const taxNoticePreviewInput = z.strictObject({
+  year: taxYear,
+  minSum: taxMinSum.min(1),
+  round: z.enum(["notice", "reminder"]),
+  donorIds: z.array(z.number().int().positive()).min(1).max(5000).optional(),
+});
+
 /** Donors to compare before merging, e.g. the donors sharing a national ID */
 export const taxCompareDonorsInput = z.strictObject({
   donorIds: z.array(z.number().int().positive()).min(2).max(10),
@@ -140,6 +148,10 @@ export const missingTaxUnitNoticeInput = z
     testLimit: z.number().int().min(1).max(100).optional(),
     /** Sending to the donors themselves: the year again, as typed in the confirmation */
     confirmYear: taxYear.optional(),
+    /** The notice to "Gets the notice" (default), or a reminder to "Sent" */
+    round: z.enum(["notice", "reminder"]).optional(),
+    /** Only these donors (ticked in the list) */
+    donorIds: z.array(z.number().int().positive()).min(1).max(5000).optional(),
   })
   .superRefine((input, ctx) => {
     const problem = noticeOptionsProblem(input);

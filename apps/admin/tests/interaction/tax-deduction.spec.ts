@@ -43,6 +43,9 @@ const overview = (year: number, difference = "0.00") => ({
       status: "notice",
       statusBy: null,
       statusAt: null,
+      reminders: 0,
+      lastReminded: null,
+      canRemind: false,
     },
     {
       donorId: 1464,
@@ -57,6 +60,9 @@ const overview = (year: number, difference = "0.00") => ({
       status: "excluded",
       statusBy: null,
       statusAt: null,
+      reminders: 0,
+      lastReminded: null,
+      canRemind: false,
     },
     {
       donorId: 30,
@@ -71,6 +77,9 @@ const overview = (year: number, difference = "0.00") => ({
       status: "excluded",
       statusBy: "admin@example.org",
       statusAt: "2026-11-10T09:00:00.000Z",
+      reminders: 0,
+      lastReminded: null,
+      canRemind: false,
     },
     {
       donorId: 40,
@@ -85,6 +94,9 @@ const overview = (year: number, difference = "0.00") => ({
       status: "sent",
       statusBy: "admin@example.org",
       statusAt: "2026-11-10T09:00:00.000Z",
+      reminders: 1,
+      lastReminded: "2026-12-01T09:00:00.000Z",
+      canRemind: true,
     },
   ],
   sentNoLongerWithout: 2,
@@ -102,7 +114,7 @@ const overview = (year: number, difference = "0.00") => ({
   ],
 });
 
-type Calls = { overview: unknown[]; notice: unknown[]; status?: unknown[] };
+type Calls = { overview: unknown[]; notice: unknown[]; status?: unknown[]; preview?: unknown[] };
 
 async function open(page: Page, calls: Calls, xmlResult: unknown) {
   await stubAnalysisApi(page, {
@@ -114,7 +126,52 @@ async function open(page: Page, calls: Calls, xmlResult: unknown) {
       },
       "reports.tax.missingTaxUnitNotice": (input) => {
         calls.notice.push(input);
-        return { total: 2, success: 2, failed: 0, testMode: true, donorsMarkedSent: 0 };
+        const { round = "notice", testEmail } = input as { round?: string; testEmail?: string };
+        return {
+          round,
+          total: 2,
+          success: 2,
+          failed: 0,
+          testMode: !!testEmail,
+          donorsMarkedSent: testEmail ? 0 : 1,
+        };
+      },
+      "reports.tax.noticePreview": (input) => {
+        (calls.preview ??= []).push(input);
+        const { round } = input as { round: string };
+        return {
+          round,
+          emails: 1,
+          donors: 1,
+          example: {
+            donorIds: [20],
+            name: "Test Giver",
+            email: "test.giver@example.org",
+            donationsSum: 1000.3,
+          },
+          mail: {
+            templateId: "tmpl-test",
+            personalization: {
+              name: "Test",
+              year: String(thisYear),
+              donationTotalSum: "1 000,3 kr",
+              deductionPercentage: "22%",
+              maxDeduction: "25 000 kr",
+              organizations: [
+                {
+                  name: "Testorganisasjon",
+                  sum: "1 000,3 kr",
+                  percentage: "100%",
+                  outputs: ["3 myggnett"],
+                },
+              ],
+              profilePageUrl: "https://example.org/min-side",
+              profilePageLinkTitle: "Logg inn",
+              reminder: round === "reminder",
+            },
+          },
+          problem: null,
+        };
       },
       "reports.tax.noticeStatus": (input) => {
         (calls.status ??= []).push(input);
@@ -202,8 +259,17 @@ test("tax deduction: the missing tax unit notice in test mode goes to the test a
   await open(page, calls, null);
 
   await page.getByRole("button", { name: "Send missing tax unit notice" }).click();
-  const dialog = page.getByRole("alertdialog").or(page.getByRole("dialog"));
+  const dialog = page.getByRole("alertdialog");
   await expect(dialog.getByLabel("Test mode")).toBeChecked();
+  // The preview: how many, the first recipient and the values the template gets
+  const preview = dialog.getByRole("region", { name: "Preview" });
+  await expect(preview).toContainText("1 email to 1 donor");
+  await expect(preview).toContainText("test.giver@example.org");
+  await expect(preview).toContainText("Testorganisasjon: 1 000,3 kr (100%) · 3 myggnett");
+  await expect(preview).toContainText("template tmpl-test");
+  await expect
+    .poll(() => calls.preview?.[0])
+    .toEqual({ year: thisYear, minSum: 500, round: "notice" });
   const send = dialog.getByRole("button", { name: "Send test" });
   await expect(send).toBeDisabled();
   await dialog.getByLabel("Send to").fill("test@example.org");
@@ -213,10 +279,11 @@ test("tax deduction: the missing tax unit notice in test mode goes to the test a
     .toEqual({
       year: thisYear,
       minSum: 500,
+      round: "notice",
       testEmail: "test@example.org",
       testLimit: 3,
     });
-  await expect(page.getByText("Test sent")).toBeVisible();
+  await expect(page.getByText("Test sent").first()).toBeVisible();
 
   // Real sending needs the year typed
   await page.getByRole("button", { name: "Send missing tax unit notice" }).click();
@@ -229,7 +296,7 @@ test("tax deduction: the missing tax unit notice in test mode goes to the test a
   await realSend.click();
   await expect
     .poll(() => calls.notice[1])
-    .toEqual({ year: thisYear, minSum: 500, confirmYear: thisYear });
+    .toEqual({ year: thisYear, minSum: 500, round: "notice", confirmYear: thisYear });
 });
 
 test("tax deduction: ticked donors move to Left out and back", async ({ page }) => {
@@ -253,9 +320,62 @@ test("tax deduction: ticked donors move to Left out and back", async ({ page }) 
     .poll(() => calls.status?.[1])
     .toEqual({ year: thisYear, donorIds: [30], status: "notice" });
 
-  // Sent donors can't be ticked
+  // Ticked donors in Gets the notice can get the notice alone
+  await page.getByRole("radio", { name: "Gets the notice (1)" }).click();
+  await without.getByRole("row", { name: /#20/ }).getByRole("checkbox").click();
+  await page.getByRole("button", { name: "Send notice to ticked" }).click();
+  const dialog = page.getByRole("alertdialog");
+  await expect(dialog).toContainText("1 ticked donor");
+  await expect
+    .poll(() => calls.preview?.at(-1))
+    .toEqual({ year: thisYear, minSum: 500, round: "notice", donorIds: [20] });
+  await dialog.getByLabel("Test mode").click();
+  await dialog.getByLabel(/to confirm/).fill(String(thisYear));
+  await dialog.getByRole("button", { name: "Send to donors" }).click();
+  await expect
+    .poll(() => calls.notice.at(-1))
+    .toEqual({
+      year: thisYear,
+      minSum: 500,
+      round: "notice",
+      donorIds: [20],
+      confirmYear: thisYear,
+    });
+  await expect(page.getByText("1 donor moved to Sent", { exact: false }).first()).toBeVisible();
+});
+
+test("tax deduction: reminders go to donors in Sent, shown with the last one", async ({ page }) => {
+  const calls: Calls = { overview: [], notice: [] };
+  await open(page, calls, null);
+  const without = page.getByRole("table", { name: "Donors without tax unit" });
+
   await page.getByRole("radio", { name: "Sent (1)" }).click();
-  await expect(without.getByRole("checkbox")).toHaveCount(0);
+  await expect(without.getByRole("row", { name: /#40/ })).toContainText("1 reminder, last");
+
+  await without.getByRole("row", { name: /#40/ }).getByRole("checkbox").click();
+  await page.getByRole("button", { name: "Send reminder to ticked" }).click();
+  const dialog = page.getByRole("alertdialog");
+  await expect(dialog).toContainText("Send a test of the reminder");
+  await expect(dialog.getByRole("region", { name: "Preview" })).toContainText("reminder = Yes");
+  await dialog.getByLabel("Test mode").click();
+  await dialog.getByLabel(/to confirm/).fill(String(thisYear));
+  await dialog.getByRole("button", { name: "Send to donors" }).click();
+  await expect
+    .poll(() => calls.notice.at(-1))
+    .toEqual({
+      year: thisYear,
+      minSum: 500,
+      round: "reminder",
+      donorIds: [40],
+      confirmYear: thisYear,
+    });
+  await expect(page.getByText("Reminders sent").first()).toBeVisible();
+  await expect(
+    page.getByText("The reminder is recorded on 1 donor", { exact: false }).first(),
+  ).toBeVisible();
+
+  // The header button reminds all who can be reminded
+  await expect(page.getByRole("button", { name: "Send reminder", exact: true })).toBeEnabled();
 });
 
 test("tax deduction: the XML needs contact details and the CSV, shows errors and downloads", async ({

@@ -82,7 +82,15 @@ const notice = (
   donorId: number,
   status: TaxUnitNoticeRow["status"],
   updated = new Date("2026-11-10T09:00:00Z"),
-): TaxUnitNoticeRow => ({ donorId, status, updatedBy: ADMIN, updated });
+): TaxUnitNoticeRow => ({
+  donorId,
+  status,
+  updatedBy: ADMIN,
+  updated,
+  reminders: 0,
+  lastReminded: null,
+  lastRemindedBy: null,
+});
 
 describe("Norwegian ID check (mod 11)", () => {
   it("accepts valid national IDs and organization numbers", () => {
@@ -271,6 +279,14 @@ describe("Tax_unit_notices SQL", () => {
     expect(query.secondCall.args[0]).to.contain("Status = 'excluded'");
     await DAO.taxunitnotices.markSent(2025, [1], ADMIN);
     expect(query.thirdCall.args[0]).to.contain("ON DUPLICATE KEY UPDATE Status = 'sent'");
+  });
+
+  it("records a reminder only on donors who were sent the notice", async () => {
+    const query = sinon.stub(DAO, "query").resolves([{ affectedRows: 1 }, []] as any);
+    await DAO.taxunitnotices.markReminded(2025, [1], ADMIN);
+    expect(query.firstCall.args[0]).to.contain("Reminders = Reminders + 1");
+    expect(query.firstCall.args[0]).to.contain("Status = 'sent'");
+    expect(query.firstCall.args[1]).to.deep.equal([ADMIN, 2025, [1]]);
   });
 
   it("does nothing for an empty list", async () => {
@@ -565,6 +581,7 @@ describe("tRPC reports.tax", () => {
       testLimit: 1,
     });
     expect(result).to.deep.equal({
+      round: "notice",
       total: 1,
       success: 1,
       failed: 0,
@@ -627,6 +644,7 @@ describe("tRPC reports.tax", () => {
       confirmYear: 2025,
     });
     expect(result).to.deep.equal({
+      round: "notice",
       total: 2,
       success: 2,
       failed: 0,
@@ -695,6 +713,115 @@ describe("tRPC reports.tax", () => {
     }
     expect(error?.message).to.match(/confirmYear/);
     expect(send.callCount).to.equal(0);
+  });
+});
+
+describe("Sending to chosen donors, reminders and the preview", () => {
+  let markSent: sinon.SinonStub;
+  let markReminded: sinon.SinonStub;
+  beforeEach(() => {
+    sinon.stub(DAO.tax, "getDonorsWithoutTaxUnitInYear").resolves([
+      withoutUnit({ donorId: 1, email: "a@example.org", donationsSum: "900.00" }),
+      withoutUnit({ donorId: 2, email: "b@example.org", donationsSum: "800.00" }),
+      withoutUnit({ donorId: 3, email: "c@example.org", donationsSum: "700.00" }),
+      // Sent, and has since been deleted: no reminder
+      withoutUnit({ donorId: 4, email: "d@example.org", donationsSum: "600.00", trashed: true }),
+    ]);
+    sinon.stub(DAO.taxunitnotices, "getForYear").resolves([notice(3, "sent"), notice(4, "sent")]);
+    markSent = sinon.stub(DAO.taxunitnotices, "markSent").resolves();
+    markReminded = sinon.stub(DAO.taxunitnotices, "markReminded").resolves();
+  });
+  afterEach(() => sinon.restore());
+
+  it("sends the notice only to the ticked donors of Gets the notice", async () => {
+    const send = sinon.stub(mail, "sendMissingTaxUnitNotice").resolves(true);
+    const result = await callerWith(["admin"]).reports.tax.missingTaxUnitNotice({
+      year: 2025,
+      minSum: 500,
+      confirmYear: 2025,
+      // 3 is in Sent: the notice round doesn't send to it again
+      donorIds: [2, 3],
+    });
+    expect(send.getCalls().map((call) => call.args[2])).to.deep.equal(["b@example.org"]);
+    expect(result).to.deep.include({ round: "notice", total: 1, donorsMarkedSent: 1 });
+    expect(markSent.firstCall.args).to.deep.equal([2025, [2], ADMIN]);
+  });
+
+  it("reminds the donors in Sent the rules still allow, and records the reminder", async () => {
+    const send = sinon.stub(mail, "sendMissingTaxUnitNotice").resolves(true);
+    const result = await callerWith(["admin"]).reports.tax.missingTaxUnitNotice({
+      year: 2025,
+      minSum: 500,
+      confirmYear: 2025,
+      round: "reminder",
+    });
+    expect(send.getCalls().map((call) => [call.args[2], call.args[3]])).to.deep.equal([
+      ["c@example.org", { reminder: true }],
+    ]);
+    expect(result).to.deep.include({ round: "reminder", total: 1, donorsMarkedSent: 1 });
+    expect(markReminded.firstCall.args).to.deep.equal([2025, [3], ADMIN]);
+    expect(markSent.callCount).to.equal(0);
+  });
+
+  it("a reminder needs the year confirmed like the notice", async () => {
+    const send = sinon.stub(mail, "sendMissingTaxUnitNotice").resolves(true);
+    try {
+      await callerWith(["admin"]).reports.tax.missingTaxUnitNotice({
+        year: 2025,
+        minSum: 500,
+        round: "reminder",
+      });
+      expect.fail("expected BAD_REQUEST");
+    } catch (err: any) {
+      expect(err.code).to.equal("BAD_REQUEST");
+    }
+    expect(send.callCount).to.equal(0);
+  });
+
+  it("previews the round: how many, and the email for the first recipient, sending nothing", async () => {
+    const send = sinon.stub(mail, "sendMissingTaxUnitNotice").resolves(true);
+    const build = sinon
+      .stub(mail, "buildMissingTaxUnitNotice")
+      .resolves({ templateId: "template-1", personalization: { name: "Donor" } });
+    const preview = await callerWith(["admin"]).reports.tax.noticePreview({
+      year: 2025,
+      minSum: 500,
+      round: "notice",
+    });
+    expect(preview).to.deep.include({ round: "notice", emails: 2, donors: 2, problem: null });
+    expect(preview.example).to.deep.include({ donorIds: [1], email: "a@example.org" });
+    expect(preview.mail).to.deep.equal({
+      templateId: "template-1",
+      personalization: { name: "Donor" },
+    });
+    expect(build.firstCall.args[2]).to.deep.equal({ reminder: false });
+    expect(send.callCount).to.equal(0);
+    expect(markSent.callCount).to.equal(0);
+
+    build.resolves(null);
+    const reminder = await callerWith(["admin"]).reports.tax.noticePreview({
+      year: 2025,
+      minSum: 500,
+      round: "reminder",
+    });
+    expect(reminder).to.deep.include({ emails: 1, mail: null });
+    expect(reminder.problem).to.match(/limits/);
+  });
+
+  it("shows reminders in the overview, and who a reminder would go to", async () => {
+    sinon.stub(DAO.tax, "getTaxXMLReportUnits").resolves([]);
+    sinon
+      .stub(DAO.tax, "getDonationTotalsInYear")
+      .resolves({ total: "0", withoutTaxUnit: "0", donations: 0 });
+    (DAO.taxunitnotices.getForYear as sinon.SinonStub).resolves([
+      { ...notice(3, "sent"), reminders: 2, lastReminded: new Date("2026-12-01T09:00:00Z") },
+      notice(4, "sent"),
+    ]);
+    const overview = await getTaxReportOverview(2025, 500);
+    const row = (id: number) => overview.withoutTaxUnit.find((donor) => donor.donorId === id)!;
+    expect(row(3)).to.deep.include({ reminders: 2, canRemind: true });
+    expect(row(4)).to.deep.include({ reminders: 0, canRemind: false });
+    expect(row(1).canRemind).to.equal(false);
   });
 });
 
