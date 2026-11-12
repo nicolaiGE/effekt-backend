@@ -44,6 +44,7 @@ import { usePageQuery } from "@/lib/query";
 import { useTRPC, type RouterOutputs } from "@/lib/trpc";
 import { CompareDuplicates } from "./tax-duplicate-compare";
 import { NoticeSend } from "./tax-notice-send";
+import { ChangesSinceReport, TaxFiles } from "./tax-files";
 import { LeaveOut, LeftOutUnits } from "./tax-left-out";
 import { UnconnectedGifts } from "./tax-unconnected";
 import {
@@ -148,11 +149,16 @@ export function TaxDeductionReport() {
                 <Duplicates overview={overview.data} />
                 <InvalidNumbers overview={overview.data} />
                 <LeftOutUnits overview={overview.data} />
+                <ChangesSinceReport overview={overview.data} />
               </>
             ) : (
               <Pending className="min-h-40" />
             )}
-            <XmlDownload year={year} invalidReported={invalidReportedCount(overview.data)} />
+            <XmlDownload
+              year={year}
+              invalidReported={invalidReportedCount(overview.data)}
+              overview={overview.data}
+            />
           </div>
         </Updating>
       )}
@@ -797,7 +803,15 @@ function InvalidNumbers({ overview }: { overview: Overview }) {
 
 //region XML file
 
-function XmlDownload({ year, invalidReported }: { year: number; invalidReported: number }) {
+function XmlDownload({
+  year,
+  invalidReported,
+  overview,
+}: {
+  year: number;
+  invalidReported: number;
+  overview: Overview | undefined;
+}) {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
   const [contact, setContact] = usePersistentState<TaxContact>(
@@ -917,7 +931,7 @@ function XmlDownload({ year, invalidReported }: { year: number; invalidReported:
             <Money value={xml.data.giverportalSum} /> from EA Giverportal.
             {xml.data.leftOut > 0 &&
               ` ${plural(xml.data.leftOut, "tax unit")} left out by hand ${xml.data.leftOut === 1 ? "is" : "are"} not in it.`}{" "}
-            Upload it to Skatteetaten.
+            Upload it to Skatteetaten (RF-1301), then mark it as sent below.
           </Callout>
         )}
         <div>
@@ -927,6 +941,7 @@ function XmlDownload({ year, invalidReported }: { year: number; invalidReported:
           </Button>
         </div>
       </form>
+      {overview && <TaxFiles overview={overview} />}
     </SettingsSection>
   );
 }

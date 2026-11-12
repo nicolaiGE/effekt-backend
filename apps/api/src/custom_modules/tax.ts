@@ -6,6 +6,7 @@ import { Decimal } from "decimal.js";
 import { EANTaxUnitsRow, parseEanTaxUnits } from "./parsers/eanTaxUnits";
 import { type DonorForComparison, type TaxUnitYearSum, taxYearRange } from "./DAO_modules/tax";
 import type { TaxReportExclusionRow } from "./DAO_modules/taxreportexclusions";
+import type { TaxReportRow } from "./DAO_modules/taxreports";
 import {
   classifyDonorsWithoutTaxUnit,
   noticeExclusionLabels,
@@ -228,6 +229,25 @@ export type TaxReportOverview = {
     /** Left out of the report by an admin */
     leftOut: boolean;
   }[];
+  /** The XML files made for the year, newest first, and which was sent to Skatteetaten */
+  files: TaxReportRow[];
+  /**
+   * Against the latest file marked as sent: tax units whose amount in the report would now be
+   * different (whole kroner), for a correction with RF-1310. Null when no file is marked as sent.
+   */
+  changes: {
+    basis: { id: number; submitted: Date };
+    rows: {
+      donorIds: number[];
+      taxUnitIds: number[];
+      name: string;
+      maskedNumber: string;
+      /** Whole kroner, Gi Effektivt's part */
+      filed: string;
+      now: string;
+      difference: string;
+    }[];
+  } | null;
   /** Tax units left out of the report by an admin, with the reason */
   leftOut: {
     donorIds: number[];
@@ -251,14 +271,17 @@ export async function getTaxReportOverview(
   year: number,
   minSum: number,
 ): Promise<TaxReportOverview> {
-  const [rows, totals, withoutTaxUnit, notices, unconnected, exclusions] = await Promise.all([
-    DAO.tax.getTaxXMLReportUnits(year),
-    DAO.tax.getDonationTotalsInYear(year),
-    DAO.tax.getDonorsWithoutTaxUnitInYear(year, minSum),
-    DAO.taxunitnotices.getForYear(year),
-    DAO.tax.getUnconnectedGiftsInYear(year),
-    DAO.taxreportexclusions.getForYear(year),
-  ]);
+  const [rows, totals, withoutTaxUnit, notices, unconnected, exclusions, files] = await Promise.all(
+    [
+      DAO.tax.getTaxXMLReportUnits(year),
+      DAO.tax.getDonationTotalsInYear(year),
+      DAO.tax.getDonorsWithoutTaxUnitInYear(year, minSum),
+      DAO.taxunitnotices.getForYear(year),
+      DAO.tax.getUnconnectedGiftsInYear(year),
+      DAO.taxreportexclusions.getForYear(year),
+      DAO.taxreports.getForYear(year),
+    ],
+  );
   const stillWithout = new Set(withoutTaxUnit.map((row) => row.donorId));
   const units = groupTaxUnitsBySsn(rows);
   const maximumDeduction =
@@ -368,6 +391,10 @@ export async function getTaxReportOverview(
     })),
     duplicates,
     invalidNumbers,
+    files,
+    changes: await changesSinceFiled(files, units, (unit) =>
+      unit.sum.gte(minSum) && !exclusionOf(unit) ? unit.sum : new Decimal(0),
+    ),
     leftOut: leftOutUnits.map((unit) => {
       const exclusion = exclusionOf(unit)!;
       return {
@@ -383,6 +410,60 @@ export async function getTaxReportOverview(
       };
     }),
   };
+}
+
+const wholeKroner = (value: Decimal) => value.toDecimalPlaces(0, Decimal.ROUND_HALF_UP);
+
+/**
+ * Tax units whose amount in the report (whole kroner, as in the file) differs now from the latest
+ * file marked as sent: gifts registered, changed or moved since, merged donors, units left out or
+ * put back. Gi Effektivt's part only; EA Giverportal's rows are not in our database.
+ */
+async function changesSinceFiled(
+  files: TaxReportRow[],
+  units: GroupedTaxUnit[],
+  amountNow: (unit: GroupedTaxUnit) => Decimal,
+): Promise<TaxReportOverview["changes"]> {
+  const basis = files.find((file) => file.submitted);
+  if (!basis?.submitted) return null;
+  const filed = await DAO.taxreports.getUnitAmounts(basis.id);
+  const rows: NonNullable<TaxReportOverview["changes"]>["rows"] = [];
+  const seen = new Set<number>();
+  const push = (unit: Omit<GroupedTaxUnit, "sum">, was: Decimal, now: Decimal) => {
+    const [a, b] = [wholeKroner(was), wholeKroner(now)];
+    if (a.eq(b)) return;
+    rows.push({
+      donorIds: unit.donorIds,
+      taxUnitIds: unit.taxUnitIds,
+      name: unit.name,
+      maskedNumber: maskIdNumberForList(unit.ssn),
+      filed: money(a),
+      now: money(b),
+      difference: money(b.sub(a)),
+    });
+  };
+  for (const unit of units) {
+    unit.taxUnitIds.forEach((id) => seen.add(id));
+    const was = unit.taxUnitIds.reduce((acc, id) => acc.add(filed.get(id) ?? 0), new Decimal(0));
+    push(unit, was, amountNow(unit));
+  }
+  // In the file, but without gifts in the year now (moved, or the tax unit is gone)
+  for (const [taxUnitId, amount] of filed) {
+    if (seen.has(taxUnitId)) continue;
+    const unit = await DAO.tax.getById(taxUnitId);
+    push(
+      {
+        ssn: unit?.ssn ?? "",
+        name: unit?.name ?? "Tax unit no longer exists",
+        donorIds: unit ? [unit.donorId] : [],
+        taxUnitIds: [taxUnitId],
+      },
+      new Decimal(amount),
+      new Decimal(0),
+    );
+  }
+  rows.sort((a, b) => Math.abs(Number(b.difference)) - Math.abs(Number(a.difference)));
+  return { basis: { id: basis.id, submitted: basis.submitted }, rows };
 }
 
 /**
@@ -462,6 +543,8 @@ export type TaxXmlReportResult =
       giverportalSum: string;
       /** Units left out of the file by an admin (Tax_report_exclusions) */
       leftOut: number;
+      /** Per tax unit of ours in the file, its own amount (Gi Effektivt's part), for Tax_reports */
+      ourUnits: { taxUnitId: number; amount: string }[];
     }
   | { ok: false; errors: TaxReportError[] };
 
@@ -495,7 +578,8 @@ export async function createXMLReportToTaxAuthorities(
   const leftOutNumbers = new Set<string>();
   let leftOut = 0;
   const units = new Map<string, GroupedTaxUnit & { giverportal: Decimal }>();
-  for (const unit of groupTaxUnitsBySsn(await DAO.tax.getTaxXMLReportUnits(year))) {
+  const ourRows = await DAO.tax.getTaxXMLReportUnits(year);
+  for (const unit of groupTaxUnitsBySsn(ourRows)) {
     // Left out by an admin: the number is out of the file, EA Giverportal's row for it too
     if (exclusionOf(unit)) {
       if (unit.ssn !== "") leftOutNumbers.add(unit.ssn);
@@ -605,6 +689,12 @@ export async function createXMLReportToTaxAuthorities(
       reported.reduce((acc, unit) => acc.add(unit.giverportal), new Decimal(0)),
     ),
     leftOut,
+    ourUnits: (() => {
+      const inFile = new Set(reported.flatMap((unit) => unit.taxUnitIds));
+      return ourRows
+        .filter((row) => inFile.has(row.taxUnitId))
+        .map((row) => ({ taxUnitId: row.taxUnitId, amount: row.donationsSum }));
+    })(),
   };
 }
 

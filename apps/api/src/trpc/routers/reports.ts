@@ -35,6 +35,7 @@ import {
   taxCompareDonorsInput,
   taxConnectGiftsInput,
   taxExcludeUnitInput,
+  taxMarkSubmittedInput,
   taxIncludeUnitsInput,
   taxNoticePreviewInput,
   skatteetatenXmlInput,
@@ -352,7 +353,7 @@ const taxRouter = router({
    * The XML file for Skatteetaten from our tax units plus EA Giverportal's CSV. Problems that
    * would make the report wrong come back as `errors` instead of a file.
    */
-  skatteetaten: adminProcedure.input(skatteetatenXmlInput).mutation(async ({ input }) => {
+  skatteetaten: adminProcedure.input(skatteetatenXmlInput).mutation(async ({ input, ctx }) => {
     const result = await createXMLReportToTaxAuthorities(
       input.year,
       input.minSum,
@@ -365,6 +366,18 @@ const taxRouter = router({
       },
     );
     if (!result.ok) return { file: null, errors: result.errors };
+    // Every file made is recorded, so the one sent can be marked and later changes listed
+    const reportId = await DAO.taxreports.record(
+      {
+        year: input.year,
+        units: result.units,
+        sum: result.sum,
+        giverportalSum: result.giverportalSum,
+        leftOut: result.leftOut,
+        createdBy: adminIdentity(ctx.auth),
+      },
+      result.ourUnits,
+    );
     const file: FilePayload = {
       filename: `skattefradrag_${input.year}.xml`,
       contentType: "application/xml",
@@ -377,6 +390,7 @@ const taxRouter = router({
       sum: result.sum,
       giverportalSum: result.giverportalSum,
       leftOut: result.leftOut,
+      reportId,
     };
   }),
 
@@ -449,6 +463,14 @@ const taxRouter = router({
   includeUnits: adminProcedure.input(taxIncludeUnitsInput).mutation(async ({ input }) => ({
     changed: await DAO.taxreportexclusions.include(input.year, input.taxUnitIds),
   })),
+
+  /** Marks a file as the one sent to Skatteetaten; later changes are listed against it */
+  markSubmitted: adminProcedure.input(taxMarkSubmittedInput).mutation(async ({ input, ctx }) => ({
+    changed: await DAO.taxreports.markSubmitted(input.reportId, adminIdentity(ctx.auth)),
+  })),
+
+  /** Gift years with a file sent to Skatteetaten, for warnings where gifts are registered */
+  submittedYears: adminProcedure.query(() => DAO.taxreports.getSubmittedYears()),
 
   /** Swedish KU65 XML (Skatteverket) from a CSV of donation sums per personnummer */
   ku65: adminProcedure.input(ku65Input).mutation(async ({ input }) => {

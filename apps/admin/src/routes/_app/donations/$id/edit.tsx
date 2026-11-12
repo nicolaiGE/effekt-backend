@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { Callout } from "@/components/domain/callout";
+import { ReportedYearWarning } from "@/features/reports/tax-files";
 import { ConfirmDialog } from "@/components/domain/confirm-dialog";
 import { DistributionEditor } from "@/components/domain/distribution-editor";
 import { ErrorState } from "@/components/domain/error-state";
@@ -193,6 +194,7 @@ function EditDonationForm({
       meta={[`#${donation.id}`, donation.donor, `KID ${donation.KID}`]}
     >
       <div className="grid max-w-3xl gap-8">
+        <ReportedYearWarning date={donation.timestamp} />
         <PageSection title="Payment">
           <DonationFields
             values={draft}

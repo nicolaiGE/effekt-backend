@@ -735,6 +735,37 @@ model Tax_unit {
 }
 
 /// The missing tax unit notice per donor and gift year (Reports › Tax deduction)
+/// An XML file made for Skatteetaten: who, when, its totals, and whether it was sent
+model Tax_reports {
+  ID              Int       @id @default(autoincrement())
+  Year            Int /// Gift year of the report
+  Units           Int /// Units in the file, EA Giverportal's included
+  Sum             Decimal   @db.Decimal(15, 2) /// Whole kroner per unit, added up
+  Giverportal_sum Decimal   @db.Decimal(15, 2)
+  Left_out        Int       @default(0) /// Units left out by hand (Tax_report_exclusions)
+  Created_by      String    @db.VarChar(255) /// Admin (JWT email or sub) who made the file
+  Created         DateTime  @default(now()) @db.DateTime(0)
+  Submitted       DateTime? @db.DateTime(0) /// Marked as the file sent to Skatteetaten
+  Submitted_by    String?   @db.VarChar(255)
+
+  Tax_report_units Tax_report_units[]
+
+  @@index([Year], map: "Year_idx")
+}
+
+/// Per tax unit of ours, the amount (Gi Effektivt's part) in a Tax_reports file
+model Tax_report_units {
+  ID            Int     @id @default(autoincrement())
+  Tax_report_ID Int
+  Tax_unit_ID   Int /// No foreign key: the record stays if the tax unit is merged away
+  Amount        Decimal @db.Decimal(15, 2)
+
+  Tax_reports Tax_reports @relation(fields: [Tax_report_ID], references: [ID], onDelete: Cascade, onUpdate: Cascade, map: "fk_Tax_report_units_to_Tax_reports")
+
+  @@index([Tax_report_ID], map: "Tax_report_ID_idx")
+  @@index([Tax_unit_ID], map: "Tax_unit_ID_idx")
+}
+
 /// Tax units left out of the year's report to Skatteetaten by an admin, with the reason
 model Tax_report_exclusions {
   ID          Int      @id @default(autoincrement())

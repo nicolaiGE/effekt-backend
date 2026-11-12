@@ -102,6 +102,8 @@ const overview = (year: number, difference = "0.00") => ({
     },
   ],
   sentNoLongerWithout: 2,
+  files: [] as unknown[],
+  changes: null as unknown,
   leftOut: [
     {
       donorIds: [16],
@@ -645,4 +647,71 @@ test("tax deduction: a tax unit is left out of the file with a reason, and put b
   await leftOut.getByRole("button", { name: "Put Utelatt Testesen back in the file" }).click();
   await expect.poll(() => included[0]).toEqual({ year: thisYear, taxUnitIds: [9] });
   expect(await page.locator("main").innerText()).not.toMatch(/\b\d{9}(\d{2})?\b/);
+});
+
+test("tax deduction: files made are listed, one is marked as sent, and changes since show", async ({
+  page,
+}) => {
+  const marked: unknown[] = [];
+  const file = (id: number, submitted: string | null) => ({
+    id,
+    year: thisYear - 1,
+    units: 1234,
+    sum: "4567890.00",
+    giverportalSum: "100000.00",
+    leftOut: id === 2 ? 1 : 0,
+    createdBy: "admin@example.org",
+    created: "2027-01-15T09:00:00.000Z",
+    submitted,
+    submittedBy: submitted ? "admin@example.org" : null,
+  });
+  await stubAnalysisApi(page, {
+    overrides: {
+      "reports.tax.overview": (input) => ({
+        ...overview((input as { year: number }).year),
+        files: [file(2, null), file(1, "2027-01-19T10:00:00.000Z")],
+        changes: {
+          basis: { id: 1, submitted: "2027-01-19T10:00:00.000Z" },
+          rows: [
+            {
+              donorIds: [17],
+              taxUnitIds: [12],
+              name: "Endret Testesen",
+              maskedNumber: "0404•••••••",
+              filed: "1000.00",
+              now: "1500.00",
+              difference: "500.00",
+            },
+          ],
+        },
+      }),
+      "reports.tax.markSubmitted": (input) => {
+        marked.push(input);
+        return { changed: true };
+      },
+    },
+  });
+  await page.goto("/login");
+  await page.getByRole("button", { name: /dev token/i }).click();
+  await page.waitForURL("/");
+  await page.goto("/reports?section=tax-deduction");
+
+  const files = page.getByRole("table", { name: `Files made for ${thisYear}` });
+  await expect(files).toContainText("1 left out");
+  // One file is sent already; the other can be marked
+  await expect(files.getByRole("button", { name: "Mark as sent" })).toHaveCount(1);
+  await files.getByRole("button", { name: "Mark as sent" }).click();
+  const dialog = page.getByRole("alertdialog");
+  await expect(dialog).toContainText("is recorded as sent today");
+  await dialog.getByRole("button", { name: "Mark as sent" }).click();
+  await expect.poll(() => marked).toEqual([{ reportId: 2 }]);
+
+  const changes = page.getByRole("table", { name: "Changed since the report" });
+  await expect(changes).toContainText("Endret Testesen");
+  await expect(changes).toContainText("0404•••••••");
+  await expect(changes.getByRole("link", { name: "#17" })).toHaveAttribute(
+    "href",
+    "/donors/17?tab=tax",
+  );
+  await expect(page.getByText("Send each correction with RF-1310")).toBeVisible();
 });

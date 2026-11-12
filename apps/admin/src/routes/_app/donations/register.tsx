@@ -3,6 +3,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { ArrowLeftIcon, ArrowRightIcon, CheckIcon, PlusIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Callout } from "@/components/domain/callout";
+import { ReportedYearWarning } from "@/features/reports/tax-files";
 import { CopyValue } from "@/components/domain/copy-value";
 import { DistributionSummary } from "@/components/domain/distribution-editor";
 import { ErrorState } from "@/components/domain/error-state";
@@ -318,6 +319,7 @@ function RegisterFlow({
             )}
           </PageSection>
           <PageSection title="Payment">
+            <ReportedYearWarning date={timestamp} />
             <DonationFields
               values={draft}
               onChange={(key, value) => key !== "transactionCost" && set(key, value)}

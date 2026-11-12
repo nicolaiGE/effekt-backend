@@ -79,6 +79,18 @@ const callerWith = (permissions?: string[]) =>
   });
 
 const ADMIN = "admin@example.org";
+const file = (id: number, submitted: Date | null) => ({
+  id,
+  year: 2025,
+  units: 3,
+  sum: "31500.00",
+  giverportalSum: "0.00",
+  leftOut: 0,
+  createdBy: ADMIN,
+  created: new Date("2026-01-15T09:00:00Z"),
+  submitted,
+  submittedBy: submitted ? ADMIN : null,
+});
 const notice = (
   donorId: number,
   status: TaxUnitNoticeRow["status"],
@@ -94,8 +106,11 @@ const notice = (
 });
 
 // Tax_report_exclusions: none unless a test says otherwise
+// Tax_reports: no files unless a test says otherwise
 beforeEach(() => {
   sinon.stub(DAO.taxreportexclusions, "getForYear").resolves([]);
+  sinon.stub(DAO.taxreports, "getForYear").resolves([]);
+  sinon.stub(DAO.taxreports, "record").resolves(77);
 });
 afterEach(() => sinon.restore());
 
@@ -444,6 +459,41 @@ describe("Tax report overview", () => {
     expect(JSON.stringify(overview)).to.not.contain(PERSON_A);
   });
 
+  it("lists no changes until a file is marked as sent", async () => {
+    (DAO.taxreports.getForYear as sinon.SinonStub).resolves([file(3, null)]);
+    const overview = await getTaxReportOverview(2025, 500);
+    expect(overview.files).to.have.length(1);
+    expect(overview.changes).to.equal(null);
+  });
+
+  it("lists units whose amount in the report changed since the sent file, in whole kroner", async () => {
+    (DAO.taxreports.getForYear as sinon.SinonStub).resolves([file(4, null), file(3, new Date())]);
+    const amounts = sinon.stub(DAO.taxreports, "getUnitAmounts").resolves(
+      new Map([
+        // PERSON_A: 300.10 + 200.00 now; filed 300.10 + 100.00
+        [1, "300.10"],
+        [2, "100.00"],
+        // PERSON_B: unchanged
+        [3, "30000.00"],
+        // Unit 5 (invalid number) is reported now too, unchanged
+        [5, "1000.00"],
+        // In the file, no gifts in the year now
+        [40, "800.00"],
+      ]),
+    );
+    sinon.stub(DAO.tax, "getById").resolves(null);
+    const overview = await getTaxReportOverview(2025, 500);
+    expect(amounts.firstCall.args).to.deep.equal([3]);
+    expect(overview.changes?.basis.id).to.equal(3);
+    expect(
+      overview.changes?.rows.map((row) => [row.taxUnitIds, row.filed, row.now, row.difference]),
+    ).to.deep.equal([
+      [[40], "800.00", "0.00", "-800.00"],
+      [[1, 2], "400.00", "500.00", "100.00"],
+    ]);
+    expect(JSON.stringify(overview.changes)).to.not.contain(PERSON_A);
+  });
+
   it("lists gifts not on the donor's own tax unit, with the units masked", async () => {
     const overview = await getTaxReportOverview(2025, 500);
     expect(overview.unconnected).to.deep.equal([
@@ -531,6 +581,12 @@ describe("Skatteetaten XML report", () => {
       giverportalSum: "1100.50",
       leftOut: 0,
     });
+    // Our units in the file with their own amounts, for Tax_reports
+    expect(result.ourUnits).to.deep.equal([
+      { taxUnitId: 1, amount: "300.40" },
+      { taxUnitId: 2, amount: "300.40" },
+      { taxUnitId: 3, amount: "499.00" },
+    ]);
   });
 
   it("leaves units out of the file by number, EA Giverportal's row too", async () => {
@@ -656,6 +712,21 @@ describe("tRPC reports.tax", () => {
     const result = await callerWith(["admin"]).reports.tax.skatteetaten(formData);
     expect(result.file).to.equal(null);
     expect(result.errors).to.have.length(1);
+    // Only files actually made are recorded
+    expect((DAO.taxreports.record as sinon.SinonStub).callCount).to.equal(0);
+  });
+
+  it("marks a file as sent, saying who, and lists the years with a sent file", async () => {
+    const mark = sinon.stub(DAO.taxreports, "markSubmitted").resolves(true);
+    sinon
+      .stub(DAO.taxreports, "getSubmittedYears")
+      .resolves([{ year: 2025, submitted: new Date("2026-01-19T10:00:00Z") }]);
+    const caller = callerWith(["admin"]).reports.tax;
+    expect(await caller.markSubmitted({ reportId: 3 })).to.deep.equal({ changed: true });
+    expect(mark.firstCall.args).to.deep.equal([3, ADMIN]);
+    expect(await caller.submittedYears()).to.deep.equal([
+      { year: 2025, submitted: new Date("2026-01-19T10:00:00Z") },
+    ]);
   });
 
   it("sends the missing tax unit notice in test mode to the test address", async () => {

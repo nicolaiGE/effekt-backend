@@ -146,6 +146,9 @@ export const taxIncludeUnitsInput = z.strictObject({
   taxUnitIds: z.array(z.number().int().positive()).min(1).max(100),
 });
 
+/** Marks an XML file (Tax_reports) as the one sent to Skatteetaten */
+export const taxMarkSubmittedInput = z.strictObject({ reportId: z.number().int().positive() });
+
 /** Donors to compare before merging, e.g. the donors sharing a national ID */
 export const taxCompareDonorsInput = z.strictObject({
   donorIds: z.array(z.number().int().positive()).min(2).max(10),
