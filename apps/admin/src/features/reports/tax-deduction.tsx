@@ -44,6 +44,7 @@ import { usePageQuery } from "@/lib/query";
 import { useTRPC, type RouterOutputs } from "@/lib/trpc";
 import { CompareDuplicates } from "./tax-duplicate-compare";
 import { NoticeSend } from "./tax-notice-send";
+import { TaxChecklist } from "./tax-checklist";
 import { ChangesSinceReport, TaxFiles } from "./tax-files";
 import { LeaveOut, LeftOutUnits } from "./tax-left-out";
 import { UnconnectedGifts } from "./tax-unconnected";
@@ -141,6 +142,7 @@ export function TaxDeductionReport() {
       ) : (
         <Updating active={overview.isPlaceholderData}>
           <div className="grid gap-10">
+            {overview.data && <TaxChecklist overview={overview.data} />}
             <ControlFigures overview={overview.data} />
             {overview.data ? (
               <>

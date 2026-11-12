@@ -269,6 +269,16 @@ test("tax deduction: control figures, deviation lists without national IDs, year
   // No 9- or 11-digit numbers anywhere on the page
   expect(await page.locator("main").innerText()).not.toMatch(/\b\d{9}(\d{2})?\b/);
 
+  // The checklist: limits in the code, notice partly sent, numbers block the file, no file yet
+  const checklist = page.getByRole("list", { name: `Checklist for ${thisYear}` });
+  await expect(checklist).toContainText(`Before 1 January ${thisYear + 1}`);
+  await expect(checklist).toContainText("1 still get it, 1 sent");
+  await expect(checklist).toContainText(
+    "1 invalid number blocks the file, 1 donor to connect, 1 possible duplicate",
+  );
+  await expect(checklist).toContainText("No file made yet");
+  await expect(checklist).toContainText("After the report");
+
   // The running year is open by default, and says so; its limits are in the code
   await expect(page.getByText("are not in the code")).toHaveCount(0);
   await expect(page.getByText("The year isn't over")).toBeVisible();
