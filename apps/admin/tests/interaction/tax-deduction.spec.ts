@@ -12,6 +12,8 @@ const overview = (year: number, difference = "0.00") => ({
   year,
   minSum: 500,
   maximumDeduction: 25000,
+  // Last year's limits are missing in this fixture, to show the warning
+  limitsInCode: year !== thisYear - 1,
   totals: {
     all: "33100.39",
     reported: "31500.10",
@@ -171,7 +173,8 @@ test("tax deduction: control figures, deviation lists without national IDs, year
   // No 9- or 11-digit numbers anywhere on the page
   expect(await page.locator("main").innerText()).not.toMatch(/\b\d{9}(\d{2})?\b/);
 
-  // The running year is open by default, and says so
+  // The running year is open by default, and says so; its limits are in the code
+  await expect(page.getByText("are not in the code")).toHaveCount(0);
   await expect(page.getByText("The year isn't over")).toBeVisible();
 
   // Last year (the one reported in January) asks again; a difference is called out
@@ -179,6 +182,9 @@ test("tax deduction: control figures, deviation lists without national IDs, year
   await page.getByRole("option", { name: String(thisYear - 1) }).click();
   await expect.poll(() => calls.overview.at(-1)).toEqual({ year: thisYear - 1, minSum: 500 });
   await expect(page.getByText("The year isn't over")).toHaveCount(0);
+  await expect(
+    page.getByText(`The tax deduction limits for ${thisYear - 1} are not in the code`),
+  ).toBeVisible();
   await expect(page.getByText("The figures don't add up")).toBeVisible();
 });
 

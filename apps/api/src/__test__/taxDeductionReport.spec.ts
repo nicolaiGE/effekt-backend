@@ -368,6 +368,13 @@ describe("Tax report overview", () => {
     expect(JSON.stringify(overview)).to.not.contain("donor20@example.org");
   });
 
+  it("says when the year's limits are not in the code", async () => {
+    expect((await getTaxReportOverview(2025, 500)).limitsInCode).to.equal(true);
+    const future = await getTaxReportOverview(2099, 500);
+    expect(future.limitsInCode).to.equal(false);
+    expect(future.maximumDeduction).to.equal(25000);
+  });
+
   it("shows a difference when the parts don't add up", async () => {
     (DAO.tax.getDonationTotalsInYear as sinon.SinonStub).resolves({
       total: "33100.40",

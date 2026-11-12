@@ -119,6 +119,18 @@ export function TaxDeductionReport() {
             </p>
           )}
         </div>
+        {overview.data && !overview.data.limitsInCode && (
+          <Callout
+            tone="warning"
+            title={`The tax deduction limits for ${year} are not in the code`}
+            className="mt-4 max-w-2xl"
+          >
+            The figures use{" "}
+            <Money value={String(overview.data.maximumDeduction)} precision="whole" /> as the
+            maximum deduction, and the missing tax unit notice can't be sent. Check the year's
+            limits with Skatteetaten and ask tech to add them (taxdeductions.ts) before 1 January.
+          </Callout>
+        )}
       </SettingsSection>
 
       {overview.error ? (

@@ -131,6 +131,11 @@ export type TaxReportOverview = {
   year: number;
   minSum: number;
   maximumDeduction: number;
+  /**
+   * Whether the year is in norwegianTaxDeductionLimits. Without it the maximum is a guess
+   * (DEFAULT_MAXIMUM_DEDUCTION) and the missing tax unit notice can't be sent.
+   */
+  limitsInCode: boolean;
   /** Decimal strings in kroner */
   totals: {
     /** All donations confirmed in the year */
@@ -270,6 +275,7 @@ export async function getTaxReportOverview(
     year,
     minSum,
     maximumDeduction,
+    limitsInCode: year in norwegianTaxDeductionLimits,
     totals: {
       all: money(all),
       reported: money(reportedSum),
