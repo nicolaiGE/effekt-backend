@@ -829,7 +829,7 @@ function XmlDownload({ year, invalidReported }: { year: number; invalidReported:
               setFiles(next);
               xml.reset();
             }}
-            hint="Columns: Name, ssn, Sum, Gieffektivt"
+            hint="Columns: name, ssn, sum, gieffektivt (TRUE or FALSE). Commas or semicolons; amounts like 12500.50 or 12 500,50"
           />
           {missingFile && (
             <p className="text-sm text-danger" role="alert">
