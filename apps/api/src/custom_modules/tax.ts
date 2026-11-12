@@ -5,6 +5,7 @@ import { validateXML } from "xmllint-wasm";
 import { Decimal } from "decimal.js";
 import { EANTaxUnitsRow, parseEanTaxUnits } from "./parsers/eanTaxUnits";
 import { type DonorForComparison, type TaxUnitYearSum, taxYearRange } from "./DAO_modules/tax";
+import type { TaxReportExclusionRow } from "./DAO_modules/taxreportexclusions";
 import {
   classifyDonorsWithoutTaxUnit,
   noticeExclusionLabels,
@@ -144,9 +145,11 @@ export type TaxReportOverview = {
     reported: string;
     /** On tax units with less than minSum */
     belowMinimum: string;
+    /** On tax units an admin has left out of the report (Tax_report_exclusions) */
+    leftOut: string;
     /** On distributions without a tax unit */
     withoutTaxUnit: string;
-    /** all - (reported + belowMinimum + withoutTaxUnit); "0.00" when the figures add up */
+    /** all - (reported + belowMinimum + leftOut + withoutTaxUnit); "0.00" when the figures add up */
     difference: string;
   };
   counts: {
@@ -156,6 +159,7 @@ export type TaxReportOverview = {
     persons: number;
     organizations: number;
     belowMinimumUnits: number;
+    leftOutUnits: number;
     /** Reported units above the maximum deduction */
     aboveMaximum: number;
   };
@@ -219,8 +223,23 @@ export type TaxReportOverview = {
     maskedNumber: string;
     problem: string;
     sum: string;
-    /** Whether the unit is in the report (at least minSum) */
+    /** Whether the unit is in the report (at least minSum, not left out) */
     reported: boolean;
+    /** Left out of the report by an admin */
+    leftOut: boolean;
+  }[];
+  /** Tax units left out of the report by an admin, with the reason */
+  leftOut: {
+    donorIds: number[];
+    taxUnitIds: number[];
+    name: string;
+    maskedNumber: string;
+    sum: string;
+    /** Whether the unit would be reported if it weren't left out (at least minSum) */
+    aboveMinimum: boolean;
+    reason: string;
+    by: string;
+    at: Date;
   }[];
 };
 
@@ -232,26 +251,31 @@ export async function getTaxReportOverview(
   year: number,
   minSum: number,
 ): Promise<TaxReportOverview> {
-  const [rows, totals, withoutTaxUnit, notices, unconnected] = await Promise.all([
+  const [rows, totals, withoutTaxUnit, notices, unconnected, exclusions] = await Promise.all([
     DAO.tax.getTaxXMLReportUnits(year),
     DAO.tax.getDonationTotalsInYear(year),
     DAO.tax.getDonorsWithoutTaxUnitInYear(year, minSum),
     DAO.taxunitnotices.getForYear(year),
     DAO.tax.getUnconnectedGiftsInYear(year),
+    DAO.taxreportexclusions.getForYear(year),
   ]);
   const stillWithout = new Set(withoutTaxUnit.map((row) => row.donorId));
   const units = groupTaxUnitsBySsn(rows);
   const maximumDeduction =
     norwegianTaxDeductionLimits[year]?.maximumDeductionLimit ?? DEFAULT_MAXIMUM_DEDUCTION;
 
-  const reported = units.filter((unit) => unit.sum.gte(minSum));
-  const below = units.filter((unit) => unit.sum.lt(minSum));
+  const exclusionOf = exclusionLookup(exclusions);
+  const leftOutUnits = units.filter((unit) => exclusionOf(unit));
+  const counted = units.filter((unit) => !exclusionOf(unit));
+  const reported = counted.filter((unit) => unit.sum.gte(minSum));
+  const below = counted.filter((unit) => unit.sum.lt(minSum));
   const sumOf = (list: GroupedTaxUnit[]) =>
     list.reduce((acc, unit) => acc.add(unit.sum), new Decimal(0));
   const reportedSum = sumOf(reported);
   const belowSum = sumOf(below);
+  const leftOutSum = sumOf(leftOutUnits);
   const all = new Decimal(totals.total);
-  const difference = all.sub(reportedSum).sub(belowSum).sub(totals.withoutTaxUnit);
+  const difference = all.sub(reportedSum).sub(belowSum).sub(leftOutSum).sub(totals.withoutTaxUnit);
 
   const duplicates: TaxReportOverview["duplicates"] = units
     .filter((unit) => unit.donorIds.length > 1)
@@ -285,7 +309,8 @@ export async function getTaxReportOverview(
             maskedNumber: maskIdNumberForList(unit.ssn),
             problem,
             sum: money(unit.sum),
-            reported: unit.sum.gte(minSum),
+            reported: unit.sum.gte(minSum) && !exclusionOf(unit),
+            leftOut: !!exclusionOf(unit),
           },
         ]
       : [];
@@ -300,6 +325,7 @@ export async function getTaxReportOverview(
       all: money(all),
       reported: money(reportedSum),
       belowMinimum: money(belowSum),
+      leftOut: money(leftOutSum),
       withoutTaxUnit: money(new Decimal(totals.withoutTaxUnit)),
       difference: money(difference),
     },
@@ -310,6 +336,7 @@ export async function getTaxReportOverview(
       organizations: reported.filter((unit) => checkNorwegianId(unit.ssn).kind === "organization")
         .length,
       belowMinimumUnits: below.length,
+      leftOutUnits: leftOutUnits.length,
       aboveMaximum: reported.filter((unit) => unit.sum.gt(maximumDeduction)).length,
     },
     withoutTaxUnit: classifyDonorsWithoutTaxUnit(withoutTaxUnit, minSum, notices).map((donor) => ({
@@ -341,7 +368,31 @@ export async function getTaxReportOverview(
     })),
     duplicates,
     invalidNumbers,
+    leftOut: leftOutUnits.map((unit) => {
+      const exclusion = exclusionOf(unit)!;
+      return {
+        donorIds: unit.donorIds,
+        taxUnitIds: unit.taxUnitIds,
+        name: unit.name,
+        maskedNumber: maskIdNumberForList(unit.ssn),
+        sum: money(unit.sum),
+        aboveMinimum: unit.sum.gte(minSum),
+        reason: exclusion.reason,
+        by: exclusion.createdBy,
+        at: exclusion.created,
+      };
+    }),
   };
+}
+
+/**
+ * The exclusion that leaves a grouped unit out of the report, if any: any of its tax units left
+ * out takes the whole number out, as it is one unit for Skatteetaten
+ */
+function exclusionLookup(exclusions: TaxReportExclusionRow[]) {
+  const byUnit = new Map(exclusions.map((exclusion) => [exclusion.taxUnitId, exclusion]));
+  return (unit: { taxUnitIds: number[] }) =>
+    unit.taxUnitIds.map((id) => byUnit.get(id)).find(Boolean) ?? null;
 }
 
 export type ConnectGiftsResult = {
@@ -409,6 +460,8 @@ export type TaxXmlReportResult =
       units: number;
       sum: string;
       giverportalSum: string;
+      /** Units left out of the file by an admin (Tax_report_exclusions) */
+      leftOut: number;
     }
   | { ok: false; errors: TaxReportError[] };
 
@@ -438,8 +491,17 @@ export async function createXMLReportToTaxAuthorities(
     };
   }
 
+  const exclusionOf = exclusionLookup(await DAO.taxreportexclusions.getForYear(year));
+  const leftOutNumbers = new Set<string>();
+  let leftOut = 0;
   const units = new Map<string, GroupedTaxUnit & { giverportal: Decimal }>();
   for (const unit of groupTaxUnitsBySsn(await DAO.tax.getTaxXMLReportUnits(year))) {
+    // Left out by an admin: the number is out of the file, EA Giverportal's row for it too
+    if (exclusionOf(unit)) {
+      if (unit.ssn !== "") leftOutNumbers.add(unit.ssn);
+      leftOut++;
+      continue;
+    }
     units.set(unit.ssn === "" ? `unit:${unit.taxUnitIds[0]}` : unit.ssn, {
       ...unit,
       giverportal: new Decimal(0),
@@ -450,6 +512,7 @@ export async function createXMLReportToTaxAuthorities(
   for (const row of eanTaxUnits) {
     const ssn = row.ssn.replace(/\s/g, "");
     const label = `EA Giverportal row for “${row.name}”`;
+    if (leftOutNumbers.has(ssn)) continue;
     const problem = describeNorwegianIdProblem(ssn);
     if (problem) {
       errors.push({ kind: "invalidNumber", message: `${label}: ${problem}` });
@@ -541,6 +604,7 @@ export async function createXMLReportToTaxAuthorities(
     giverportalSum: money(
       reported.reduce((acc, unit) => acc.add(unit.giverportal), new Decimal(0)),
     ),
+    leftOut,
   };
 }
 

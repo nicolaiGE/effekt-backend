@@ -44,6 +44,7 @@ import { usePageQuery } from "@/lib/query";
 import { useTRPC, type RouterOutputs } from "@/lib/trpc";
 import { CompareDuplicates } from "./tax-duplicate-compare";
 import { NoticeSend } from "./tax-notice-send";
+import { LeaveOut, LeftOutUnits } from "./tax-left-out";
 import { UnconnectedGifts } from "./tax-unconnected";
 import {
   defaultTaxYear,
@@ -146,6 +147,7 @@ export function TaxDeductionReport() {
                 <UnconnectedGifts overview={overview.data} />
                 <Duplicates overview={overview.data} />
                 <InvalidNumbers overview={overview.data} />
+                <LeftOutUnits overview={overview.data} />
               </>
             ) : (
               <Pending className="min-h-40" />
@@ -180,6 +182,15 @@ function ControlFigures({ overview }: { overview: Overview | undefined }) {
       value: totals?.belowMinimum,
       detail: counts && plural(counts.belowMinimumUnits, "tax unit"),
     },
+    ...(counts?.leftOutUnits
+      ? [
+          {
+            label: "Left out by hand",
+            value: totals?.leftOut,
+            detail: plural(counts.leftOutUnits, "tax unit"),
+          },
+        ]
+      : []),
     { label: "Without tax unit", value: totals?.withoutTaxUnit },
   ];
   return (
@@ -758,7 +769,23 @@ function InvalidNumbers({ overview }: { overview: Overview }) {
             <TableCell className="text-right">
               <Money value={row.sum} />
             </TableCell>
-            <TableCell>{row.reported ? "Yes, blocks the file" : "No, below minimum"}</TableCell>
+            <TableCell>
+              {row.leftOut ? (
+                "No, left out by hand"
+              ) : row.reported ? (
+                <span className="flex flex-wrap items-center gap-2">
+                  Yes, blocks the file
+                  <LeaveOut
+                    year={overview.year}
+                    donorId={row.donorIds[0]!}
+                    taxUnitId={row.taxUnitIds[0]!}
+                    reason="Invalid number, and the donor can't be reached"
+                  />
+                </span>
+              ) : (
+                "No, below minimum"
+              )}
+            </TableCell>
           </TableRow>
         ))}
       </ListTable>
@@ -887,8 +914,10 @@ function XmlDownload({ year, invalidReported }: { year: number; invalidReported:
         {xml.data?.file && (
           <Callout tone="success" title="File downloaded">
             {plural(xml.data.units, "tax unit")}, <Money value={xml.data.sum} /> in total, of which{" "}
-            <Money value={xml.data.giverportalSum} /> from EA Giverportal. Upload it to
-            Skatteetaten.
+            <Money value={xml.data.giverportalSum} /> from EA Giverportal.
+            {xml.data.leftOut > 0 &&
+              ` ${plural(xml.data.leftOut, "tax unit")} left out by hand ${xml.data.leftOut === 1 ? "is" : "are"} not in it.`}{" "}
+            Upload it to Skatteetaten.
           </Callout>
         )}
         <div>

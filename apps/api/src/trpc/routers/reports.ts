@@ -34,6 +34,8 @@ import {
   taxNoticeStatusInput,
   taxCompareDonorsInput,
   taxConnectGiftsInput,
+  taxExcludeUnitInput,
+  taxIncludeUnitsInput,
   taxNoticePreviewInput,
   skatteetatenXmlInput,
   taxOverviewInput,
@@ -374,6 +376,7 @@ const taxRouter = router({
       units: result.units,
       sum: result.sum,
       giverportalSum: result.giverportalSum,
+      leftOut: result.leftOut,
     };
   }),
 
@@ -425,6 +428,27 @@ const taxRouter = router({
       throw new TRPCError({ code: "BAD_REQUEST", message: (ex as Error).message, cause: ex });
     }
   }),
+
+  /**
+   * Leaves a tax unit out of the year's report, with the reason (for example a number Altinn
+   * rejected for a donor we can't reach). Every unit with the same number goes with it.
+   */
+  excludeUnit: adminProcedure.input(taxExcludeUnitInput).mutation(async ({ input, ctx }) => {
+    const unit = await DAO.tax.getById(input.taxUnitId);
+    if (!unit) throw new TRPCError({ code: "NOT_FOUND", message: "Tax unit not found" });
+    const changed = await DAO.taxreportexclusions.exclude(
+      input.year,
+      input.taxUnitId,
+      input.reason,
+      adminIdentity(ctx.auth),
+    );
+    return { changed };
+  }),
+
+  /** Puts left-out tax units back in the year's report */
+  includeUnits: adminProcedure.input(taxIncludeUnitsInput).mutation(async ({ input }) => ({
+    changed: await DAO.taxreportexclusions.include(input.year, input.taxUnitIds),
+  })),
 
   /** Swedish KU65 XML (Skatteverket) from a CSV of donation sums per personnummer */
   ku65: adminProcedure.input(ku65Input).mutation(async ({ input }) => {

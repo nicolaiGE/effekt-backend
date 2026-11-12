@@ -724,8 +724,9 @@ model Tax_unit {
   registered DateTime? @default(now()) @db.DateTime(0)
   archived   DateTime? @db.DateTime(0)
 
-  FB_payment_ID FB_payment_ID[]
-  Distributions Distributions[]
+  FB_payment_ID         FB_payment_ID[]
+  Distributions         Distributions[]
+  Tax_report_exclusions Tax_report_exclusions[]
 
   // When a donor is deleted we also delete the tax unit.
   Donors Donors @relation(fields: [Donor_ID], references: [ID], onDelete: Cascade, map: "FK_tax_unit_donor_id")
@@ -734,6 +735,21 @@ model Tax_unit {
 }
 
 /// The missing tax unit notice per donor and gift year (Reports › Tax deduction)
+/// Tax units left out of the year's report to Skatteetaten by an admin, with the reason
+model Tax_report_exclusions {
+  ID          Int      @id @default(autoincrement())
+  Tax_unit_ID Int
+  Year        Int /// Gift year of the report
+  Reason      String   @db.VarChar(500) /// Why, e.g. a number Altinn rejected for a donor we can't reach
+  Created_by  String   @db.VarChar(255) /// Admin (JWT email or sub) who left the unit out
+  Created     DateTime @default(now()) @db.DateTime(0)
+
+  Tax_unit Tax_unit @relation(fields: [Tax_unit_ID], references: [ID], onDelete: Cascade, onUpdate: Cascade, map: "fk_Tax_report_exclusions_to_Tax_unit")
+
+  @@unique([Tax_unit_ID, Year], map: "Tax_unit_ID_Year_UNIQUE")
+  @@index([Year], map: "Year_idx")
+}
+
 model Tax_unit_notices {
   ID               Int       @id @default(autoincrement())
   Donor_ID         Int

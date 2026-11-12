@@ -18,6 +18,7 @@ const overview = (year: number, difference = "0.00") => ({
     all: "33100.39",
     reported: "31500.10",
     belowMinimum: "599.99",
+    leftOut: "0.00",
     withoutTaxUnit: "1000.30",
     difference,
   },
@@ -27,6 +28,7 @@ const overview = (year: number, difference = "0.00") => ({
     persons: 2,
     organizations: 1,
     belowMinimumUnits: 2,
+    leftOutUnits: 0,
     aboveMaximum: 1,
   },
   withoutTaxUnit: [
@@ -100,6 +102,19 @@ const overview = (year: number, difference = "0.00") => ({
     },
   ],
   sentNoLongerWithout: 2,
+  leftOut: [
+    {
+      donorIds: [16],
+      taxUnitIds: [9],
+      name: "Utelatt Testesen",
+      maskedNumber: "0303•••••••",
+      sum: "900.00",
+      aboveMinimum: true,
+      reason: "Altinn: unknown number",
+      by: "admin@example.org",
+      at: "2026-11-11T09:00:00.000Z",
+    },
+  ],
   unconnected: [
     {
       donorId: 15,
@@ -124,6 +139,7 @@ const overview = (year: number, difference = "0.00") => ({
       problem: "Invalid check digit (national ID)",
       sum: "1000.00",
       reported: true,
+      leftOut: false,
     },
   ],
 });
@@ -557,4 +573,76 @@ test("tax deduction: gifts not on the donor's tax unit are connected to the chos
   await dialog.getByRole("button", { name: "Connect to Testfirma AS" }).click();
   await expect.poll(() => connected).toEqual([{ year: thisYear, donorId: 15, taxUnitId: 8 }]);
   await expect(page.getByText("3 earlier donations kept as before")).toBeVisible();
+});
+
+test("tax deduction: a tax unit is left out of the file with a reason, and put back", async ({
+  page,
+}) => {
+  const excluded: unknown[] = [];
+  const included: unknown[] = [];
+  await stubAnalysisApi(page, {
+    overrides: {
+      "reports.tax.overview": (input) => overview((input as { year: number }).year),
+      "donors.taxUnits.list": () => [
+        {
+          id: 21,
+          donorId: 13,
+          name: "Ugyldig Testesen",
+          ssn: "01010112345",
+          archived: null,
+          taxDeductions: [],
+        },
+      ],
+      "reports.tax.excludeUnit": (input) => {
+        excluded.push(input);
+        return { changed: true };
+      },
+      "reports.tax.includeUnits": (input) => {
+        included.push(input);
+        return { changed: 1 };
+      },
+    },
+  });
+  await page.goto("/login");
+  await page.getByRole("button", { name: /dev token/i }).click();
+  await page.waitForURL("/");
+  await page.goto("/reports?section=tax-deduction");
+
+  // From Invalid numbers: the unit is known, only the reason is asked
+  const invalid = page.getByRole("table", { name: "Invalid numbers" });
+  await invalid.getByRole("button", { name: "Leave out" }).click();
+  let dialog = page.getByRole("alertdialog");
+  await expect(dialog.getByLabel("Reason")).toHaveValue(
+    "Invalid number, and the donor can't be reached",
+  );
+  await dialog.getByRole("button", { name: "Leave out" }).click();
+  await expect
+    .poll(() => excluded[0])
+    .toEqual({
+      year: thisYear,
+      taxUnitId: 5,
+      reason: "Invalid number, and the donor can't be reached",
+    });
+
+  // Any tax unit, by donor
+  await page.getByRole("button", { name: "Leave a tax unit out" }).click();
+  dialog = page.getByRole("alertdialog");
+  const leave = dialog.getByRole("button", { name: "Leave out" });
+  await expect(leave).toBeDisabled();
+  await dialog.getByLabel("Donor ID").fill("13");
+  await dialog.getByRole("radio", { name: /Ugyldig Testesen/ }).click();
+  await expect(dialog).toContainText("0101•••••••");
+  await dialog.getByLabel("Reason").fill("Altinn: unknown number");
+  await leave.click();
+  await expect
+    .poll(() => excluded[1])
+    .toEqual({ year: thisYear, taxUnitId: 21, reason: "Altinn: unknown number" });
+
+  // The list shows the reason, and puts the unit back
+  const leftOut = page.getByRole("table", { name: "Left out of the file" });
+  await expect(leftOut).toContainText("Altinn: unknown number");
+  await expect(leftOut).toContainText("0303•••••••");
+  await leftOut.getByRole("button", { name: "Put Utelatt Testesen back in the file" }).click();
+  await expect.poll(() => included[0]).toEqual({ year: thisYear, taxUnitIds: [9] });
+  expect(await page.locator("main").innerText()).not.toMatch(/\b\d{9}(\d{2})?\b/);
 });

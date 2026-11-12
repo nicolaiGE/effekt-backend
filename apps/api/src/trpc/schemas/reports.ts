@@ -133,6 +133,19 @@ export const taxConnectGiftsInput = z.strictObject({
   taxUnitId: z.number().int().positive(),
 });
 
+/** Leaves a tax unit (and every unit with its number) out of the year's report, with the reason */
+export const taxExcludeUnitInput = z.strictObject({
+  year: taxYear,
+  taxUnitId: z.number().int().positive(),
+  reason: z.string().trim().min(3, "Say why").max(500),
+});
+
+/** Puts tax units left out back in the year's report */
+export const taxIncludeUnitsInput = z.strictObject({
+  year: taxYear,
+  taxUnitIds: z.array(z.number().int().positive()).min(1).max(100),
+});
+
 /** Donors to compare before merging, e.g. the donors sharing a national ID */
 export const taxCompareDonorsInput = z.strictObject({
   donorIds: z.array(z.number().int().positive()).min(2).max(10),
