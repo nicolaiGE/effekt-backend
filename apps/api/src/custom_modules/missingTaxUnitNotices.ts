@@ -30,7 +30,7 @@ export const noticeExclusionLabels: Record<NoticeExclusion, string> = {
   anonymous: "Anonymous donor",
   noEmail: "No email address",
   internalEmail: "Internal or placeholder address",
-  hasTaxUnit: "Has a tax unit, check the KIDs",
+  hasTaxUnit: "Has a tax unit: connect the gifts below",
   leftOut: "Left out by hand",
 };
 

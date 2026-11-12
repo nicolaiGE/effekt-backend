@@ -44,6 +44,7 @@ import { usePageQuery } from "@/lib/query";
 import { useTRPC, type RouterOutputs } from "@/lib/trpc";
 import { CompareDuplicates } from "./tax-duplicate-compare";
 import { NoticeSend } from "./tax-notice-send";
+import { UnconnectedGifts } from "./tax-unconnected";
 import {
   defaultTaxYear,
   emptyTaxContact,
@@ -142,6 +143,7 @@ export function TaxDeductionReport() {
             {overview.data ? (
               <>
                 <WithoutTaxUnit overview={overview.data} />
+                <UnconnectedGifts overview={overview.data} />
                 <Duplicates overview={overview.data} />
                 <InvalidNumbers overview={overview.data} />
               </>
@@ -434,9 +436,9 @@ function WithoutTaxUnit({ overview }: { overview: Overview }) {
           </p>
           <p className="mt-2">
             The notice skips deleted and anonymous donors, donors without a real email address, and
-            donors who already have a tax unit (their gifts are on KIDs without it: check those by
-            hand). Fundraiser gifts count towards {min}: a tax unit the donor registers covers them
-            too.
+            donors who already have a tax unit (connect their gifts under “Gifts not on the donor’s
+            tax unit”). Fundraiser gifts count towards {min}: a tax unit the donor registers covers
+            them too.
           </p>
           <p className="mt-2">
             Tick donors and move them to “Left out” to skip them, for example a student

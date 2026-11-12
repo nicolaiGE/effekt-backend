@@ -14,6 +14,7 @@ import {
   sendMissingTaxUnitNotices,
 } from "../custom_modules/missingTaxUnitNotices";
 import * as mail from "../custom_modules/mail";
+import { donationHelpers } from "../custom_modules/donationHelpers";
 import { checkNorwegianId, maskIdNumbers } from "../custom_modules/norwegianId";
 import { osloYearRange } from "../custom_modules/osloDays";
 import { LAST_UTC_TAX_YEAR, taxYearRange } from "../custom_modules/DAO_modules/tax";
@@ -341,6 +342,17 @@ describe("Tax report overview", () => {
       .stub(DAO.tax, "getDonorsWithoutTaxUnitInYear")
       .resolves([withoutUnit({ donorId: 20, donationsSum: "1000.30", donations: 3 })]);
     sinon.stub(DAO.taxunitnotices, "getForYear").resolves([]);
+    sinon.stub(DAO.tax, "getUnconnectedGiftsInYear").resolves([
+      {
+        donorId: 15,
+        name: "Donor 15",
+        email: "donor15@example.org",
+        donationsSum: "750.00",
+        donations: 2,
+        kids: 1,
+        taxUnits: [{ id: 7, name: "Unit 7", ssn: PERSON_C }],
+      },
+    ]);
   });
   afterEach(() => sinon.restore());
 
@@ -399,6 +411,22 @@ describe("Tax report overview", () => {
       donations: 40,
     });
     expect((await getTaxReportOverview(2025, 500)).totals.difference).to.equal("0.01");
+  });
+
+  it("lists gifts not on the donor's own tax unit, with the units masked", async () => {
+    const overview = await getTaxReportOverview(2025, 500);
+    expect(overview.unconnected).to.deep.equal([
+      {
+        donorId: 15,
+        name: "Donor 15",
+        email: "donor15@example.org",
+        donationsSum: "750.00",
+        donations: 2,
+        kids: 1,
+        taxUnits: [{ id: 7, name: "Unit 7", maskedNumber: `${PERSON_C.slice(0, 4)}•••••••` }],
+      },
+    ]);
+    expect(JSON.stringify(overview)).to.not.contain(PERSON_C);
   });
 
   it("lists duplicates and invalid numbers by donor, without the numbers", async () => {
@@ -813,6 +841,7 @@ describe("Sending to chosen donors, reminders and the preview", () => {
     sinon
       .stub(DAO.tax, "getDonationTotalsInYear")
       .resolves({ total: "0", withoutTaxUnit: "0", donations: 0 });
+    sinon.stub(DAO.tax, "getUnconnectedGiftsInYear").resolves([]);
     (DAO.taxunitnotices.getForYear as sinon.SinonStub).resolves([
       { ...notice(3, "sent"), reminders: 2, lastReminded: new Date("2026-12-01T09:00:00Z") },
       notice(4, "sent"),
@@ -822,6 +851,76 @@ describe("Sending to chosen donors, reminders and the preview", () => {
     expect(row(3)).to.deep.include({ reminders: 2, canRemind: true });
     expect(row(4)).to.deep.include({ reminders: 0, canRemind: false });
     expect(row(1).canRemind).to.equal(false);
+  });
+});
+
+describe("Connecting gifts to the donor's tax unit", () => {
+  afterEach(() => sinon.restore());
+
+  const setUp = () => {
+    sinon
+      .stub(DAO.tax, "getById")
+      .callsFake(async (id: number) =>
+        id === 7
+          ? { id: 7, donorId: 15, name: "Unit 7", ssn: PERSON_C, archived: null as any }
+          : id === 8
+            ? { id: 8, donorId: 15, name: "Old", ssn: PERSON_C, archived: "2024-01-01" as any }
+            : { id, donorId: 99, name: "Other", ssn: PERSON_A, archived: null as any },
+      );
+    sinon.stub(DAO.tax, "getKIDsWithoutTaxUnitInYear").resolves([
+      { kid: "111", fundraiser: false, hasEarlier: false },
+      // An AvtaleGiro KID with gifts from 2024 too: those stay as reported
+      { kid: "222", fundraiser: false, hasEarlier: true },
+      { kid: "333", fundraiser: true, hasEarlier: false },
+    ]);
+    sinon.stub(DAO.distributions, "getAllByDonor").resolves({
+      donorID: 15,
+      distributions: [{ kid: "222", donorId: 15, taxUnitId: null, causeAreas: [] } as any],
+    });
+    sinon.stub(donationHelpers, "createKID").resolves("999999999999999");
+    return {
+      add: sinon.stub(DAO.distributions, "add").resolves(true),
+      move: sinon.stub(DAO.tax, "moveDonationsBefore").resolves(4),
+      connect: sinon.stub(DAO.distributions, "addTaxUnitToDistribution").resolves(),
+    };
+  };
+
+  it("puts the year's KIDs on the tax unit and keeps earlier gifts on a copy without it", async () => {
+    const { add, move, connect } = setUp();
+    const result = await callerWith(["admin"]).reports.tax.connectToTaxUnit({
+      year: 2026,
+      donorId: 15,
+      taxUnitId: 7,
+    });
+    expect(result).to.deep.equal({ kids: 3, copiedKids: 1, earlierDonationsKept: 4 });
+    expect(add.firstCall.args[0]).to.deep.include({ kid: "999999999999999", taxUnitId: null });
+    expect(move.firstCall.args.slice(0, 2)).to.deep.equal(["222", "999999999999999"]);
+    // From the start of the gift year
+    expect((move.firstCall.args[2] as Date).toISOString()).to.equal(
+      taxYearRange(2026).from.toISOString(),
+    );
+    expect(connect.getCalls().map((call) => call.args)).to.deep.equal([
+      ["111", 7],
+      ["222", 7],
+      ["333", 7],
+    ]);
+  });
+
+  it("refuses another donor's tax unit, and an archived one", async () => {
+    const { connect } = setUp();
+    for (const taxUnitId of [9, 8]) {
+      try {
+        await callerWith(["admin"]).reports.tax.connectToTaxUnit({
+          year: 2026,
+          donorId: 15,
+          taxUnitId,
+        });
+        expect.fail("expected BAD_REQUEST");
+      } catch (err: any) {
+        expect(err.code).to.equal("BAD_REQUEST");
+      }
+    }
+    expect(connect.callCount).to.equal(0);
   });
 });
 

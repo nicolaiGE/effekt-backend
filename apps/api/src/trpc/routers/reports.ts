@@ -12,6 +12,7 @@ import {
 } from "../../custom_modules/missingTaxUnitNotices";
 import {
   compareDonors,
+  connectGiftsToTaxUnit,
   createXMLReportToTaxAuthorities,
   getTaxReportOverview,
 } from "../../custom_modules/tax";
@@ -32,6 +33,7 @@ import {
   missingTaxUnitNoticeInput,
   taxNoticeStatusInput,
   taxCompareDonorsInput,
+  taxConnectGiftsInput,
   taxNoticePreviewInput,
   skatteetatenXmlInput,
   taxOverviewInput,
@@ -411,6 +413,18 @@ const taxRouter = router({
   compareDonors: adminProcedure
     .input(taxCompareDonorsInput)
     .query(({ input }) => compareDonors(input.donorIds)),
+
+  /**
+   * Puts the donor's gifts in the year on KIDs without tax unit on one of their tax units, keeping
+   * gifts from earlier years on those KIDs as they were (Gifts not on the donor's tax unit)
+   */
+  connectToTaxUnit: adminProcedure.input(taxConnectGiftsInput).mutation(async ({ input }) => {
+    try {
+      return await connectGiftsToTaxUnit(input.year, input.donorId, input.taxUnitId);
+    } catch (ex) {
+      throw new TRPCError({ code: "BAD_REQUEST", message: (ex as Error).message, cause: ex });
+    }
+  }),
 
   /** Swedish KU65 XML (Skatteverket) from a CSV of donation sums per personnummer */
   ku65: adminProcedure.input(ku65Input).mutation(async ({ input }) => {

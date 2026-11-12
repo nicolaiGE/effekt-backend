@@ -4,7 +4,7 @@ import { donationHelpers } from "./donationHelpers";
 import { validateXML } from "xmllint-wasm";
 import { Decimal } from "decimal.js";
 import { EANTaxUnitsRow, parseEanTaxUnits } from "./parsers/eanTaxUnits";
-import type { DonorForComparison, TaxUnitYearSum } from "./DAO_modules/tax";
+import { type DonorForComparison, type TaxUnitYearSum, taxYearRange } from "./DAO_modules/tax";
 import {
   classifyDonorsWithoutTaxUnit,
   noticeExclusionLabels,
@@ -189,6 +189,19 @@ export type TaxReportOverview = {
    * registered a tax unit (or their gifts moved onto one)
    */
   sentNoLongerWithout: number;
+  /**
+   * Donors with an active tax unit whose gifts in the year are on their own KIDs without one:
+   * not reported, though the donor registered. Connect them with connectGiftsToTaxUnit.
+   */
+  unconnected: {
+    donorId: number;
+    name: string | null;
+    email: string | null;
+    donationsSum: string;
+    donations: number;
+    kids: number;
+    taxUnits: { id: number; name: string; maskedNumber: string }[];
+  }[];
   /** Possible duplicates, without the number */
   duplicates: {
     reason: "sameNumber" | "severalUnits";
@@ -219,11 +232,12 @@ export async function getTaxReportOverview(
   year: number,
   minSum: number,
 ): Promise<TaxReportOverview> {
-  const [rows, totals, withoutTaxUnit, notices] = await Promise.all([
+  const [rows, totals, withoutTaxUnit, notices, unconnected] = await Promise.all([
     DAO.tax.getTaxXMLReportUnits(year),
     DAO.tax.getDonationTotalsInYear(year),
     DAO.tax.getDonorsWithoutTaxUnitInYear(year, minSum),
     DAO.taxunitnotices.getForYear(year),
+    DAO.tax.getUnconnectedGiftsInYear(year),
   ]);
   const stillWithout = new Set(withoutTaxUnit.map((row) => row.donorId));
   const units = groupTaxUnitsBySsn(rows);
@@ -318,9 +332,66 @@ export async function getTaxReportOverview(
     sentNoLongerWithout: notices.filter(
       (notice) => notice.status === "sent" && !stillWithout.has(notice.donorId),
     ).length,
+    unconnected: unconnected.map((row) => ({
+      ...row,
+      taxUnits: row.taxUnits.map(({ ssn, ...unit }) => ({
+        ...unit,
+        maskedNumber: maskIdNumberForList(ssn),
+      })),
+    })),
     duplicates,
     invalidNumbers,
   };
+}
+
+export type ConnectGiftsResult = {
+  /** KIDs that got the tax unit */
+  kids: number;
+  /** KIDs copied (without tax unit) to keep their gifts from before the year as they were */
+  copiedKids: number;
+  /** Donations moved to those copies */
+  earlierDonationsKept: number;
+};
+
+/**
+ * Connects the donor's gifts in the gift year on their own KIDs without a tax unit to one of
+ * their active tax units, so they are reported. The KIDs themselves get the tax unit, so later
+ * gifts on them (an AvtaleGiro going on) are covered too. Gifts from before the year on the same
+ * KID were reported (or left out) for their year and must stay as they are: they move to a copy
+ * of the KID without tax unit first, as connectDonationsForFirstTaxUnit does. Fundraiser KIDs
+ * hold one gift each and get the tax unit directly.
+ */
+export async function connectGiftsToTaxUnit(
+  year: number,
+  donorId: number,
+  taxUnitId: number,
+): Promise<ConnectGiftsResult> {
+  const unit = await DAO.tax.getById(taxUnitId);
+  if (!unit || unit.donorId !== donorId)
+    throw new Error(`Tax unit ${taxUnitId} does not belong to donor ${donorId}`);
+  if (unit.archived) throw new Error(`Tax unit ${taxUnitId} is archived`);
+
+  const kids = await DAO.tax.getKIDsWithoutTaxUnitInYear(donorId, year);
+  const before = taxYearRange(year).from;
+  let copiedKids = 0;
+  let earlierDonationsKept = 0;
+  const needCopy = kids.filter((kid) => kid.hasEarlier && !kid.fundraiser);
+  const { distributions } = needCopy.length
+    ? await DAO.distributions.getAllByDonor(donorId)
+    : { distributions: [] };
+
+  for (const { kid, fundraiser, hasEarlier } of kids) {
+    if (hasEarlier && !fundraiser) {
+      const old = distributions.find((distribution) => distribution.kid === kid);
+      if (!old) throw new Error(`Distribution ${kid} not found`);
+      const copy = await donationHelpers.createKID(15, donorId);
+      await DAO.distributions.add({ ...old, kid: copy, taxUnitId: null });
+      earlierDonationsKept += await DAO.tax.moveDonationsBefore(kid, copy, before);
+      copiedKids++;
+    }
+    await DAO.distributions.addTaxUnitToDistribution(kid, taxUnitId);
+  }
+  return { kids: kids.length, copiedKids, earlierDonationsKept };
 }
 
 export type TaxReportError = {

@@ -4,7 +4,7 @@ import { DAO } from "../DAO";
 import { getTaxUnitsWithDeductions } from "../taxdeductions";
 import { Distributions, Tax_unit } from "@prisma/client";
 import { RequestLocale } from "../../middleware/locale";
-import { type InstantRange, instantRangeClauses, osloYearRange } from "../osloDays";
+import { type InstantRange, instantRangeClauses, osloYearRange, sqlInstant } from "../osloDays";
 
 //region Get
 /**
@@ -485,6 +485,130 @@ async function getDonorsForComparison(donorIds: number[]): Promise<DonorForCompa
   });
 }
 
+export type UnconnectedGiftsRow = {
+  donorId: number;
+  name: string | null;
+  email: string | null;
+  /** Decimal string: the donor's gifts in the year on their own KIDs without a tax unit */
+  donationsSum: string;
+  donations: number;
+  kids: number;
+  /** The donor's active tax units, to connect the gifts to */
+  taxUnits: { id: number; name: string; ssn: string | null }[];
+};
+
+/**
+ * Donors with an active tax unit whose gifts in the gift year (taxYearRange) are on their own
+ * KIDs without one, any sum. Those gifts are not reported, though the donor has registered for
+ * the deduction. The anonymous donor is left out.
+ */
+async function getUnconnectedGiftsInYear(year: number): Promise<UnconnectedGiftsRow[]> {
+  const [rows] = await DAO.query<RowDataPacket[]>(
+    `
+    SELECT
+      D.Donor_ID as donorId,
+      ANY_VALUE(Donors.full_name) as name,
+      ANY_VALUE(Donors.email) as email,
+      SUM(D.sum_confirmed) as donationsSum,
+      COUNT(*) as donations,
+      COUNT(DISTINCT D.KID_fordeling) as kids
+
+      FROM Donations as D
+
+      INNER JOIN Donors
+        ON Donors.ID = D.Donor_ID
+
+      INNER JOIN Distributions as DI
+        ON DI.KID = D.KID_fordeling AND DI.Donor_ID = D.Donor_ID
+
+      LEFT JOIN Tax_unit as TU
+        ON TU.ID = DI.Tax_unit_ID
+
+      WHERE ${confirmedInTaxYear(year)}
+        AND TU.ID IS NULL
+        AND D.Donor_ID <> 1464 -- ANONYMOUS_DONOR_ID
+        AND EXISTS (
+          SELECT 1 FROM Tax_unit WHERE Tax_unit.Donor_ID = D.Donor_ID AND Tax_unit.archived IS NULL
+        )
+
+      GROUP BY D.Donor_ID
+
+      ORDER BY SUM(D.sum_confirmed) DESC
+  `,
+  );
+  if (rows.length === 0) return [];
+  const [units] = await DAO.query<RowDataPacket[]>(
+    `SELECT ID as id, Donor_ID as donorId, full_name as name, ssn
+     FROM Tax_unit WHERE archived IS NULL AND Donor_ID IN (?) ORDER BY ID`,
+    [rows.map((row) => row.donorId)],
+  );
+  return rows.map((row) => ({
+    donorId: Number(row.donorId),
+    name: row.name ?? null,
+    email: row.email ?? null,
+    donationsSum: String(row.donationsSum),
+    donations: Number(row.donations),
+    kids: Number(row.kids),
+    taxUnits: units
+      .filter((unit) => Number(unit.donorId) === Number(row.donorId))
+      .map((unit) => ({
+        id: Number(unit.id),
+        name: String(unit.name ?? ""),
+        ssn: unit.ssn ?? null,
+      })),
+  }));
+}
+
+/**
+ * The donor's own KIDs without a tax unit that have gifts in the gift year, and whether each also
+ * has gifts from before the year (already reported, or left out, for an earlier year)
+ */
+async function getKIDsWithoutTaxUnitInYear(
+  donorId: number,
+  year: number,
+): Promise<{ kid: string; fundraiser: boolean; hasEarlier: boolean }[]> {
+  const from = taxYearRange(year).from;
+  const [rows] = await DAO.query<RowDataPacket[]>(
+    `
+    SELECT
+      DI.KID as kid,
+      DI.Fundraiser_transaction_ID as fundraiserTransactionId,
+      EXISTS (
+        SELECT 1 FROM Donations AS E
+        WHERE E.KID_fordeling = DI.KID AND E.timestamp_confirmed < ${sqlInstant(from)}
+      ) as hasEarlier
+
+      FROM Distributions as DI
+
+      LEFT JOIN Tax_unit as TU
+        ON TU.ID = DI.Tax_unit_ID
+
+      WHERE DI.Donor_ID = ?
+        AND TU.ID IS NULL
+        AND EXISTS (
+          SELECT 1 FROM Donations AS D
+          WHERE D.KID_fordeling = DI.KID AND D.Donor_ID = DI.Donor_ID AND ${confirmedInTaxYear(year)}
+        )
+  `,
+    [donorId],
+  );
+  return rows.map((row) => ({
+    kid: String(row.kid),
+    fundraiser: row.fundraiserTransactionId !== null && row.fundraiserTransactionId !== undefined,
+    hasEarlier: Boolean(Number(row.hasEarlier)),
+  }));
+}
+
+/** Moves the KID's donations confirmed before the instant to another KID */
+async function moveDonationsBefore(kid: string, newKid: string, before: Date): Promise<number> {
+  const [result] = await DAO.query<ResultSetHeader>(
+    `UPDATE Donations SET KID_fordeling = ?
+     WHERE KID_fordeling = ? AND timestamp_confirmed < ${sqlInstant(before)}`,
+    [newKid, kid],
+  );
+  return result.affectedRows;
+}
+
 export const tax = {
   getById,
   getByDonorId,
@@ -496,6 +620,9 @@ export const tax = {
   getDonationTotalsInYear,
   getDonorsWithoutTaxUnitInYear,
   getDonorsForComparison,
+  getUnconnectedGiftsInYear,
+  getKIDsWithoutTaxUnitInYear,
+  moveDonationsBefore,
   addTaxUnit,
   updateTaxUnit,
   deleteById,

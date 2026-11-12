@@ -126,6 +126,13 @@ export const taxNoticePreviewInput = z.strictObject({
   donorIds: z.array(z.number().int().positive()).min(1).max(5000).optional(),
 });
 
+/** Connects a donor's gifts in the year on KIDs without tax unit to one of their tax units */
+export const taxConnectGiftsInput = z.strictObject({
+  year: taxYear,
+  donorId: z.number().int().positive(),
+  taxUnitId: z.number().int().positive(),
+});
+
 /** Donors to compare before merging, e.g. the donors sharing a national ID */
 export const taxCompareDonorsInput = z.strictObject({
   donorIds: z.array(z.number().int().positive()).min(2).max(10),
