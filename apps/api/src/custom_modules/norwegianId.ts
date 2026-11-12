@@ -80,3 +80,13 @@ export function describeNorwegianIdProblem(id: string | null | undefined): strin
  * error messages from parsers and the XSD validator can be shown without them.
  */
 export const maskIdNumbers = (message: string): string => message.replace(/\d{6,}/g, "•••");
+
+/**
+ * A number for the admin's lists: the first four characters, the rest as dots, so the length and
+ * a typo at the start show without the number itself
+ */
+export const maskIdNumberForList = (value: string | null | undefined): string => {
+  const id = (value ?? "").replace(/\s/g, "");
+  if (id === "") return "";
+  return id.slice(0, 4) + "•".repeat(Math.max(0, id.length - 4));
+};

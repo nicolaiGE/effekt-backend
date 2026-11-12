@@ -590,8 +590,8 @@ function InvalidNumbers({ overview }: { overview: Overview }) {
       description={
         <p>
           Tax units with gifts in {overview.year} whose national ID or organization number has the
-          wrong length or check digit. Fix them on the donor: the file can't be made while a
-          reported unit has one.
+          wrong length or check digit. The donor link opens their tax units, where the number is
+          fixed. The file can't be made while a reported unit has one.
         </p>
       }
     >
@@ -602,6 +602,7 @@ function InvalidNumbers({ overview }: { overview: Overview }) {
         head={
           <>
             <TableHead>Donor</TableHead>
+            <TableHead>Tax unit</TableHead>
             <TableHead>Problem</TableHead>
             <TableHead className="text-right">Sum</TableHead>
             <TableHead>In the report</TableHead>
@@ -611,7 +612,24 @@ function InvalidNumbers({ overview }: { overview: Overview }) {
         {rows.map((row) => (
           <TableRow key={row.taxUnitIds.join("-")}>
             <TableCell>
-              <DonorLinks ids={row.donorIds} />
+              <span className="inline-flex flex-wrap gap-x-2">
+                {row.donorIds.map((id) => (
+                  <Link
+                    key={id}
+                    to="/donors/$id"
+                    params={{ id: String(id) }}
+                    search={{ tab: "tax" }}
+                    className={linkClass}
+                    aria-label={`Fix the number on donor #${id}`}
+                  >
+                    #{id}
+                  </Link>
+                ))}
+              </span>
+            </TableCell>
+            <TableCell>
+              <span className="block">{row.name || "No name"}</span>
+              <span className="num text-sm text-muted-foreground">{row.maskedNumber || "–"}</span>
             </TableCell>
             <TableCell>{row.problem}</TableCell>
             <TableCell className="text-right">

@@ -387,6 +387,8 @@ describe("Tax report overview", () => {
       {
         donorIds: [13],
         taxUnitIds: [5],
+        name: "Unit 5",
+        maskedNumber: `${PERSON_BAD_CHECK.slice(0, 4)}•••••••`,
         problem: "Invalid check digit (national ID)",
         sum: "1000.00",
         reported: true,
@@ -394,6 +396,8 @@ describe("Tax report overview", () => {
       {
         donorIds: [14],
         taxUnitIds: [6],
+        name: "Unit 6",
+        maskedNumber: "1234••••••",
         problem: "Wrong length (10 characters, expected 11 or 9)",
         sum: "100.00",
         reported: false,

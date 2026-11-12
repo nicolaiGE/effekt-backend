@@ -87,6 +87,8 @@ const overview = (year: number, difference = "0.00") => ({
     {
       donorIds: [13],
       taxUnitIds: [5],
+      name: "Ugyldig Testesen",
+      maskedNumber: "0101•••••••",
       problem: "Invalid check digit (national ID)",
       sum: "1000.00",
       reported: true,
@@ -159,6 +161,12 @@ test("tax deduction: control figures, deviation lists without national IDs, year
   const invalid = page.getByRole("table", { name: "Invalid numbers" });
   await expect(invalid).toContainText("Invalid check digit (national ID)");
   await expect(invalid).toContainText("Yes, blocks the file");
+  await expect(invalid).toContainText("Ugyldig Testesen");
+  await expect(invalid).toContainText("0101•••••••");
+  await expect(invalid.getByRole("link", { name: "Fix the number on donor #13" })).toHaveAttribute(
+    "href",
+    "/donors/13?tab=tax",
+  );
   await expect(page.getByText("Invalid numbers will stop the file")).toBeVisible();
   // No 9- or 11-digit numbers anywhere on the page
   expect(await page.locator("main").innerText()).not.toMatch(/\b\d{9}(\d{2})?\b/);

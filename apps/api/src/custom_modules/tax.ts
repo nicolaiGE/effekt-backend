@@ -11,7 +11,12 @@ import {
   type NoticeExclusion,
   type NoticeStatus,
 } from "./missingTaxUnitNotices";
-import { checkNorwegianId, describeNorwegianIdProblem, maskIdNumbers } from "./norwegianId";
+import {
+  checkNorwegianId,
+  describeNorwegianIdProblem,
+  maskIdNumberForList,
+  maskIdNumbers,
+} from "./norwegianId";
 import { norwegianTaxDeductionLimits } from "./taxdeductions";
 
 export async function connectDonationsForFirstTaxUnit(donorId: number, taxUnitId: number) {
@@ -184,6 +189,10 @@ export type TaxReportOverview = {
   invalidNumbers: {
     donorIds: number[];
     taxUnitIds: number[];
+    /** The tax unit's name */
+    name: string;
+    /** The first four characters and a dot per other character (maskIdNumberForList) */
+    maskedNumber: string;
     problem: string;
     sum: string;
     /** Whether the unit is in the report (at least minSum) */
@@ -247,6 +256,8 @@ export async function getTaxReportOverview(
           {
             donorIds: unit.donorIds,
             taxUnitIds: unit.taxUnitIds,
+            name: unit.name,
+            maskedNumber: maskIdNumberForList(unit.ssn),
             problem,
             sum: money(unit.sum),
             reported: unit.sum.gte(minSum),
